@@ -1,0 +1,18 @@
+# 构建产物
+bin/
+obj/
+publish/
+*.user
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.suo
+
+# 运行时产物（用户数据与程序分离，不进仓库）
+*.log
+log.txt
+*.cache
+
+# 仓库外的本地材料
+_backup/

@@ -1,0 +1,123 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================
+       DeskKit = CtrlG(对话框跳转) + ShotShelf(剪贴板暂存架) + MiniPix(截图/贴图)
+       三合一托盘常驻工具。源模块保留原命名空间（CtrlG / ShotShelf / MiniPix.*），
+       胶水层用 DeskKit 命名空间，避免大规模改名的风险。
+       编译: D:\dotnet-sdk\dotnet.exe build -c Release
+       ============================================================ -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- 2026-11-05 OCR v3：主引擎 RapidOCR(ONNX) 不依赖 WinRT，兜底 Windows.Media.Ocr 已删（用户拍板省 24MB），
+         TFM 退回 net8.0-windows，Microsoft.Windows.SDK.NET.dll 不再生成 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+
+    <!-- CtrlG 托盘 / ShotShelf 托盘 / MiniPix 托盘都要 NotifyIcon -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+
+    <AssemblyTitle>DeskKit 桌面工具箱</AssemblyTitle>
+    <Product>DeskKit</Product>
+    <AssemblyName>DeskKit</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!-- 2026-11-06 版本规则：基线号手动大版本推进，第三段 = 当年天数（自动，每次发布必变）。
+         编译时间/版本由下方 GenBuildInfo 目标生成 BuildInfo.g.cs，"关于"框直接读 -->
+    <VersionBase>0.2</VersionBase>
+
+    <!-- 2026-11-06 单文件发布（用户要求整理 publish 目录）：
+         托管 DLL 全部打包进 DeskKit.exe，根目录只留 exe + 原生 DLL（onnxruntime/libSkiaSharp
+         必须在 exe 旁，Windows 加载机制）+ models\v5\ + config.json -->
+    <PublishSingleFile>true</PublishSingleFile>
+
+    <!-- 2026-11-12 体积优化（用户拍板）：不自带运行时（framework-dependent），
+         机器上须已装 .NET 8 Desktop Runtime；exe 只含程序代码。
+         注：框架依赖模式不支持单文件压缩（NETSDK1176），故无压缩选项 -->
+    <SelfContained>false</SelfContained>
+
+    <!-- 2026-11-12 程序图标：用户自备 DeskKit.ico（256x256）
+         exe 文件/任务栏图标用 ApplicationIcon；运行时标题栏/托盘经 IconFactory 读内嵌资源 -->
+    <ApplicationIcon>Assets\DeskKit.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- 每次编译自动生成 BuildInfo.g.cs：版本 = VersionBase.当年天数，编译时间 = 本机当前时间 -->
+  <Target Name="GenBuildInfo" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_BuildDay>$([System.DateTime]::Now.DayOfYear.ToString("000"))</_BuildDay>
+      <_BuildTime>$([System.DateTime]::Now.ToString("yyyy-MM-dd HH:mm"))</_BuildTime>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true"
+      Lines="namespace DeskKit%3B
+             public static class BuildInfo
+             {
+                 public const string Version = &quot;$(VersionBase).$(_BuildDay)&quot;%3B
+                 public const string BuiltAt = &quot;$(_BuildTime)&quot;%3B
+             }" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <ApplicationManifest Include="app.manifest" />
+  </ItemGroup>
+
+  <!-- 2026-11-12 图标资源：内嵌进程序集，运行时 IconFactory 读取（托盘/标题栏/各窗口） -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\DeskKit.ico" />
+  </ItemGroup>
+
+  <!-- 2026-11-12 帮助文档：拷到输出/发布目录（exe 旁 Help.md），
+       帮助窗口每次打开都重新读此文件——改文档即更新帮助，无需重编译 -->
+  <ItemGroup>
+    <Content Include="Docs\Help.md" CopyToOutputDirectory="PreserveNewest" Link="Help.md" />
+  </ItemGroup>
+
+  <!-- WinForms 隐式 using 会和 WPF 的 Point/Rectangle 等冲突（沿用 MiniPix 的做法） -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <!-- 2026-11-05 OCR v3：RapidOCR（PP-OCRv5 ONNX）替换 Windows.Media.Ocr 主引擎，
+       中文识别率大幅提升（Windows OCR 中文弱且字间加空格）。
+       包内自带 det/cls 模型（自动拷到输出目录 models\v5\），中文 rec 模型+词典在本项目 OcrModels\ -->
+  <ItemGroup>
+    <PackageReference Include="RapidOcrNet" Version="4.2.0" />
+    <!-- 2026-11-10 局域网文件传输：设备标签空态/连接窗生成二维码（纯托管，无 System.Drawing 依赖，
+         用 PngByteQRCode.GetGraphic 生成 PNG 字节，单文件发布无坑） -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+  <!-- 中文识别模型 + 词典：拷贝到输出目录 models\v5\（与 NuGet 自带模型同目录）。
+       2026-11-06 目录整理：OCR 代码+模型统一收进顶层 Ocr\，模型在 Ocr\Models\ -->
+  <ItemGroup>
+    <None Include="Ocr\Models\**" CopyToOutputDirectory="PreserveNewest"
+          Link="models\v5\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- 2026-11-05 瘦身：
+       1) RapidOcrNet 的 build targets 用自定义 Models 项整目录拷贝，None Remove 匹配不上，
+          改为各自拷贝目标之后删除 latin 拉丁识别模型+词典（8MB，代码只走中文模型，从未引用）；
+          注意必须拆成两个目标：合并一个时会在 CopyModelsPublish 之前执行，删完又被拷回；
+       2) DebugType none 不再生成 .pdb -->
+  <PropertyGroup>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <Target Name="RemoveUnusedOcrModelsBuild" AfterTargets="CopyModelsBuild">
+    <Delete Files="$(TargetDir)models\v5\latin_PP-OCRv5_rec_mobile_infer.onnx;
+                   $(TargetDir)models\v5\ppocrv5_latin_dict.txt" />
+  </Target>
+  <Target Name="RemoveUnusedOcrModelsPublish" AfterTargets="CopyModelsPublish">
+    <Delete Files="$(PublishDir)models\v5\latin_PP-OCRv5_rec_mobile_infer.onnx;
+                   $(PublishDir)models\v5\ppocrv5_latin_dict.txt;
+                   $(PublishDir)onnxruntime.lib;
+                   $(PublishDir)onnxruntime_providers_shared.lib" />
+  </Target>
+
+</Project>

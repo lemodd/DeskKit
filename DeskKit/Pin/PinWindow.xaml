@@ -1,0 +1,66 @@
+<Window x:Class="MiniPix.Pin.PinWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent" ShowInTaskbar="False" Topmost="True"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        Title="MiniPix 贴图">
+    <Window.Resources>
+        <!-- 与截图/预览工具条统一的按钮样式：28x26 / 13号 / 深灰字 / 透明底（2026-11-04 三处工具条统一浅色） -->
+        <Style x:Key="CapBtn" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei, Segoe UI"/>
+            <Setter Property="Foreground" Value="#FF444A52"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+    <!-- 2026-11-04 结构调整：贴图本体与工具条改为平级（原工具条嵌在黑色 RootBorder 里，
+         黑底从贴图一直延伸包住工具条，用户反馈"贴图这里还有个黑边"） -->
+    <StackPanel>
+        <!-- 贴图本体：黑底细边 + 投影（仅包住图片，黑边框是贴图本体的样式） -->
+        <Border x:Name="RootBorder" BorderBrush="#FF9AA0A6" BorderThickness="1" Background="Black"
+                HorizontalAlignment="Left">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.4"/>
+            </Border.Effect>
+            <Grid>
+                <Image x:Name="PinImage" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"
+                     RenderOptions.EdgeMode="Aliased"/>
+                <!-- 注释画布：盖在图上，坐标 = 图片显示坐标 -->
+                <Canvas x:Name="AnnCanvas" Background="Transparent"/>
+            </Grid>
+        </Border>
+
+        <!-- 工具条：2026-11-04 与截图/预览工具条统一（浅色白底 + 浅灰边；原深底 #E6222222 + 蓝框） -->
+        <Border x:Name="PinToolBar" Margin="4,4,4,4"
+                Background="#FFFFFF" CornerRadius="4"
+                BorderBrush="#D9DCE1" BorderThickness="1"
+                Visibility="Collapsed" MouseLeftButtonDown="ToolBar_MouseLeftButtonDown"
+                HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Margin="4">
+                <Button x:Name="TbRect" Content="□" Style="{StaticResource CapBtn}" Click="TbRect_Click" ToolTip="矩形 (R)"/>
+                <Button x:Name="TbEllipse" Content="○" Style="{StaticResource CapBtn}" Click="TbEllipse_Click" ToolTip="椭圆 (O)"/>
+                <Button x:Name="TbArrow" Content="↗" Style="{StaticResource CapBtn}" Click="TbArrow_Click" ToolTip="箭头 (A)"/>
+                <Button x:Name="TbPen" Content="✎" Style="{StaticResource CapBtn}" Click="TbPen_Click" ToolTip="画笔 (D)"/>
+                <Button x:Name="TbText" Content="T" Style="{StaticResource CapBtn}" Click="TbText_Click" ToolTip="文字 (T，点击图上位置输入，Enter 完成)"/>
+                <Button x:Name="TbMosaic" Content="▦" Style="{StaticResource CapBtn}" Click="TbMosaic_Click" ToolTip="马赛克 (B)"/>
+                <Button x:Name="TbNumber" Content="①" Style="{StaticResource CapBtn}" Click="TbNumber_Click" ToolTip="数字编号：点击图上位置放一个带圈数字，自动 1、2、3… 递增"/>
+                <Button x:Name="TbColor" Content="■" Style="{StaticResource CapBtn}" Foreground="#E0403A" Click="TbColor_Click" ToolTip="颜色"/>
+                <Button x:Name="TbWidth" Content="中" Style="{StaticResource CapBtn}" Click="TbWidth_Click" ToolTip="线宽 (点击切换)"/>
+                <Button x:Name="TbUndo" Content="↶" Style="{StaticResource CapBtn}" Click="TbUndo_Click" ToolTip="撤销 (Ctrl+Z)"/>
+                <Button x:Name="TbRedo" Content="↷" Style="{StaticResource CapBtn}" Click="TbRedo_Click" ToolTip="重做 (Ctrl+Y)"/>
+                <Button x:Name="TbCopy" Content="复" Style="{StaticResource CapBtn}" Click="TbCopy_Click" ToolTip="复制到剪贴板 (Enter/Ctrl+C)"/>
+                <!-- 2026-11-05 OCR 识文：图上拖框识别（图标经 SetIcon 挂 Icons.Ocr） -->
+                <Button x:Name="TbOcr" Style="{StaticResource CapBtn}" Click="TbOcr_Click" ToolTip="OCR 识文：在图上拖框，只识别框内文字（复制到剪贴板）"/>
+                <Button x:Name="TbSave" Content="保" Style="{StaticResource CapBtn}" Click="TbSave_Click" ToolTip="保存到文件 (Ctrl+S 另存)"/>
+                <Button x:Name="TbCloseX" Content="✕" Style="{StaticResource CapBtn}" Click="TbCloseX_Click" ToolTip="关闭贴图 (Esc/双击)"/>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</Window>

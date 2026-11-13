@@ -1,0 +1,223 @@
+<Window x:Class="ShotShelf.PreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ann="clr-namespace:ShotShelf.Annotation"
+        Title="预览"
+        Width="900" Height="640"
+        MinWidth="660" MinHeight="220"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        Background="#2B2B2B">
+
+    <!-- 2026-11-02 UI 美化：自绘标题栏（WindowChrome 方案同 MainWindow）：
+         CaptionHeight=0 无系统标题栏，拖动/双击最大化/关闭由下面的标题行实现；
+         ResizeBorderThickness=6 保留边缘缩放。 -->
+        <!-- GlassFrameThickness=1（非 0）：规避 WindowStyle=None 最大化盖住任务栏的已知问题 -->
+        <WindowChrome.WindowChrome>
+            <WindowChrome CaptionHeight="0"
+                          ResizeBorderThickness="6"
+                          GlassFrameThickness="1"
+                          CornerRadius="0"
+                          UseAeroCaptionButtons="False"/>
+        </WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- 行0: 自绘标题栏 -->
+            <RowDefinition Height="Auto"/>
+            <!-- 行1: 内容（大图 / 文本） -->
+            <RowDefinition Height="*"/>
+            <!-- 行2: 底部信息栏 -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ============ 行0: 自绘标题栏（2026-11-02 UI 美化） ============ -->
+        <Border x:Name="BdTitle" Grid.Row="0" Background="#F4F5F7" BorderBrush="#E4E6EA"
+                BorderThickness="0,0,0,1"
+                MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <!-- 2026-11-02 反馈：条目信息（尺寸/日期等）从底部栏移到标题栏，跟在标题后面 -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="12,0,0,0" IsHitTestVisible="False">
+                    <TextBlock x:Name="TxtCaption" Text="预览"
+                               VerticalAlignment="Center"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#333333"/>
+                    <TextBlock x:Name="TxtTitleInfo" Text=""
+                               Margin="10,1,0,0" VerticalAlignment="Center"
+                               FontSize="11" Foreground="#8A8F98"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <!-- 窗口控制按钮：最小化 / 最大化 / 关闭（Segoe MDL2 字形） -->
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                    <Button x:Name="BtnMin" Click="BtnMin_Click"
+                            ToolTip="最小化" Focusable="False">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Width" Value="42"/>
+                                <Setter Property="Height" Value="30"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Foreground" Value="#555555"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                                <TextBlock Text="&#xE921;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                           FontSize="10" Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E4E6EA"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button x:Name="BtnMax" Click="BtnMax_Click"
+                            ToolTip="最大化 / 还原" Focusable="False">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Width" Value="42"/>
+                                <Setter Property="Height" Value="30"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Foreground" Value="#555555"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                                <TextBlock x:Name="Glyph" Text="&#xE922;"
+                                                           FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                           FontSize="10" Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E4E6EA"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button x:Name="BtnCloseWin" Click="BtnClose_Click"
+                            ToolTip="关闭" Focusable="False">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Width" Value="42"/>
+                                <Setter Property="Height" Value="30"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Foreground" Value="#555555"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                                <TextBlock Text="&#xE8BB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                           FontSize="10" Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 大图区域：ScrollViewer 包裹实现拖动查看；
+             滚轮缩放 + 中键按住拖动平移（2026-10-26 新增）；
+             升级阶段4：LayoutTransform 移到 ImgHost 网格，注释画布叠在图上共用缩放 -->
+        <ScrollViewer x:Name="ScrImage"
+                      Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="ScrImage_PreviewMouseWheel"
+                      PreviewMouseDown="ScrImage_PreviewMouseDown"
+                      PreviewMouseMove="ScrImage_PreviewMouseMove"
+                      PreviewMouseUp="ScrImage_PreviewMouseUp">
+            <!-- ImgHost 网格 = 图片自然 DIP 尺寸；ZoomTf 挂在网格上，
+                 注释画布与图共用变换 → 画布坐标恒为自然坐标，形状随缩放自然缩放 -->
+            <Grid x:Name="ImgHost"
+                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid.LayoutTransform>
+                    <!-- 2026-11-12 旋转：缩放 + 旋转组合变换（RotTf 由 BtnRotate_Click 驱动） -->
+                    <TransformGroup>
+                        <ScaleTransform x:Name="ZoomTf" ScaleX="1" ScaleY="1"/>
+                        <RotateTransform x:Name="RotTf" Angle="0"/>
+                    </TransformGroup>
+                </Grid.LayoutTransform>
+                <Image x:Name="ImgPreview"
+                       Stretch="None"
+                       Cursor="SizeAll"/>
+                <!-- 注释画布（升级阶段4）在代码后置里构造：需要底图引用 -->
+            </Grid>
+        </ScrollViewer>
+
+        <!-- 文本预览（2026-10-26 十二次更新）；2026-11-02 反馈：18 号大字 + 大行距；
+             升级阶段5：可直接编辑，停顿自动保存回写卡片与缓存。
+             2026-11-02 UI 美化：内边距加大，白底在浅灰窗里像一张纸 -->
+        <RichTextBox x:Name="TxtPreview"
+                     Grid.Row="1"
+                     Margin="10"
+                     IsReadOnly="False"
+                     TextChanged="TxtPreview_TextChanged"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled"
+                     Background="#FFFFFF"
+                     BorderThickness="0"
+                     Padding="14"
+                     Visibility="Collapsed"/>
+
+        <!-- ============ 行2: 底部信息栏（2026-11-02 UI 美化：浅色 + 新按钮样式；
+             信息允许两行换行不再截断；复制=蓝色主按钮，其余=白底扁平按钮） ============ -->
+        <Border x:Name="BdBottom" Grid.Row="2" Background="#FAFAFB" BorderBrush="#E4E6EA"
+                BorderThickness="0,1,0,0" Padding="8,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <!-- 2026-11-12 四改：OCR/旋转通过 _ann.AddHostButton 放进注释工具条本体（与截图工具栏同款），
+                     不再是外挂按钮；文本条目不创建注释编辑器 → 自动隐藏 -->
+                <ContentControl x:Name="AnnToolbarHost" Grid.Column="0"
+                                VerticalAlignment="Center" Visibility="Collapsed"/>
+                <!-- 状态文字（临时提示：复制/保存/送入结果等；条目常驻信息已移到标题栏 TxtTitleInfo） -->
+                <TextBlock x:Name="TxtInfo" Grid.Column="1" Foreground="#8A8F98"
+                           Margin="10,0" VerticalAlignment="Center"
+                           FontSize="11" LineHeight="15"
+                           TextWrapping="Wrap" MaxHeight="32"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnResetZoom" Content="100%" Style="{StaticResource FlatBtn}" Click="BtnResetZoom_Click"/>
+                    <!-- 2026-11-12 二改：OCR/旋转已移到左侧图标组 -->
+                    <!-- 2026-11-02 反馈：文本编辑改为自动保存（停顿 800ms 落盘），保存按钮已删除 -->
+                    <!-- 2026-11-04 图标统一：💾 emoji → Material Symbols Rounded download 矢量 Path -->
+                    <Button x:Name="BtnSaveAs" Style="{StaticResource FlatBtn}" Click="BtnSaveAs_Click" ToolTip="保存 PNG（含注释）">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z"
+                                  Stretch="Uniform" Width="13" Height="13" VerticalAlignment="Center"/>
+                            <TextBlock Text=" 另存为" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="复制" Style="{StaticResource AccentBtn}" Click="BtnCopy_Click" MinWidth="56"/>
+                    <Button Content="关闭" Style="{StaticResource FlatBtn}" Margin="0" Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
