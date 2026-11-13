@@ -2,6 +2,19 @@
 
 Windows 桌面效率工具箱：**截图贴图 / 剪贴板暂存架 / OCR 识文 / 局域网互传**，一个托盘常驻程序全搞定。
 
+<div align="center">
+
+[![release](https://img.shields.io/github/v/release/lemodd/DeskKit?style=flat&color=2EA043&label=release)](../../releases/latest)
+[![stars](https://img.shields.io/github/stars/lemodd/DeskKit?style=flat&color=0969DA&label=stars&logo=github)](../../stargazers)
+[![license](https://img.shields.io/github/license/lemodd/DeskKit?style=flat&color=8B5CF6&label=license)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows-0078D6?style=flat&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![runtime](https://img.shields.io/badge/.NET%208-WPF-512BD4?style=flat&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0)
+[![ocr](https://img.shields.io/badge/OCR-本地离线-DB2777?style=flat)](#截图与-ocr)
+
+[下载最新版](../../releases/latest) · [功能](#功能一览) · [使用](#快速上手) · [构建](#从源码构建) · [常见问题](#常见问题)
+
+</div>
+
 ![暂存架主界面](images/shelf.png)
 
 托盘右键菜单——所有功能一目了然，截图 / 暂存架 / 开关 / 配置按功能分组：
