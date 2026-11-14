@@ -297,7 +297,7 @@ public sealed partial class CaptureWindow : Window
         };
         _magBorder = magBorder;
 
-        // 2026-11-14 十字准星：放大镜中央，白线带黑边（亮暗底都可见），随放大镜同显同隐
+        // 2026-11-14 十字准星：放大镜中央一小段（二改：细线 1px、长 24px，白线黑边）
         _magCross = new Canvas
         {
             Width = MagBox, Height = MagBox,
@@ -308,17 +308,17 @@ public sealed partial class CaptureWindow : Window
         reticleWhite.Freeze();
         var reticleBlack = new SolidColorBrush(Color.FromArgb(0x99, 0x00, 0x00, 0x00));
         reticleBlack.Freeze();
-        // 黑色描边层（略粗）+ 白色主线层，保证任何底色上清晰
-        foreach (var (stroke, w) in new[] { (reticleBlack, 3.0), (reticleWhite, 1.2) })
+        const double retHalf = 12;                        // 准星半长：总长 24px
+        foreach (var (stroke, w) in new[] { (reticleBlack, 2.2), (reticleWhite, 1.0) })
         {
             _magCross.Children.Add(new System.Windows.Shapes.Line
             {
-                X1 = 0, Y1 = MagBox / 2.0, X2 = MagBox, Y2 = MagBox / 2.0,
+                X1 = MagBox / 2.0 - retHalf, Y1 = MagBox / 2.0, X2 = MagBox / 2.0 + retHalf, Y2 = MagBox / 2.0,
                 Stroke = stroke, StrokeThickness = w
             });
             _magCross.Children.Add(new System.Windows.Shapes.Line
             {
-                X1 = MagBox / 2.0, Y1 = 0, X2 = MagBox / 2.0, Y2 = MagBox,
+                X1 = MagBox / 2.0, Y1 = MagBox / 2.0 - retHalf, X2 = MagBox / 2.0, Y2 = MagBox / 2.0 + retHalf,
                 Stroke = stroke, StrokeThickness = w
             });
         }
