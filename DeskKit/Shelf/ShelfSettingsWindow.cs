@@ -572,6 +572,8 @@ namespace ShotShelf
             cfg.PinShadowOpacityPct = (int)_sPinShadowOpacity.Value;
 
             cfg.Save();
+            // 2026-11-14 晚间修订：贴图边框/阴影对"已经打开的贴图"也立即生效（用户要求）
+            global::MiniPix.Pin.PinWindow.ApplyStyleToAll();
             _onApplied();
             _txtMsg.Text = "已保存并生效";
             MiniPix.Core.Log.Write("shelf: settings saved (appearance/edge/store)");

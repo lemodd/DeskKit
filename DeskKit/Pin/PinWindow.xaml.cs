@@ -86,6 +86,8 @@ public partial class PinWindow : Window
         MouseLeftButtonUp += OnMouseUp;
         BuildContextMenu();
         CollectToolButtons();
+        _open.Add(this);                                    // 设置保存时统一刷新样式用
+        Closed += (_, _) => _open.Remove(this);
 
         // 2026-11-05 v2：OCR 改为一键识别，v1 的 OcrRegionOverlay 初始化已删除
 
@@ -98,7 +100,10 @@ public partial class PinWindow : Window
     }
 
     /// <summary>2026-11-14 设置窗口"贴图"页：按配置应用边框颜色/粗细与阴影参数。
-    /// 仅在贴图创建时读取——设置改动对之后新开的贴图生效，已打开的保持原样。</summary>
+    /// 晚间修订：① 阴影此前从未显示——窗口 SizeToContent 恰好等于内容大小，RootBorder
+    /// 顶在窗口边缘，投影全落在窗外被裁剪；现在给 RootBorder 留出 pad 边距（=模糊+偏移），
+    /// 投影有地方画了，并在 PlacePhysical/本方法里补偿偏移保持像素对齐。
+    /// ② 可随时重复调用：设置保存时对已打开的贴图统一刷新（ApplyStyleToAll）。</summary>
     private void ApplyPinAppearance()
     {
         try
@@ -110,22 +115,54 @@ public partial class PinWindow : Window
                     (Color)ColorConverter.ConvertFromString(cfg.PinBorderColor));
             }
             catch { /* 坏色值保留 XAML 默认 */ }
-            RootBorder.BorderThickness = new Thickness(Math.Clamp(cfg.PinBorderThickness, 0, 20));
+
+            // 内容在窗口内的偏移量 = 投影留白 + 边框厚度；变化时平移窗口保持图不动
+            double oldOffset = _shadowPad + RootBorder.BorderThickness.Left;
+
+            double thickness = Math.Clamp(cfg.PinBorderThickness, 0, 20);
+            RootBorder.BorderThickness = new Thickness(thickness);
+
+            double pad = 0;
             if (cfg.PinShadowEnabled)
             {
+                double blur = Math.Clamp(cfg.PinShadowBlur, 0, 60);
+                double depth = Math.Clamp(cfg.PinShadowDepth, 0, 30);
                 RootBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect
                 {
-                    BlurRadius = Math.Clamp(cfg.PinShadowBlur, 0, 60),
-                    ShadowDepth = Math.Clamp(cfg.PinShadowDepth, 0, 30),
+                    BlurRadius = blur,
+                    ShadowDepth = depth,
                     Opacity = Math.Clamp(cfg.PinShadowOpacityPct, 0, 100) / 100.0,
                 };
+                pad = Math.Min(Math.Ceiling(blur + depth), 60);   // 投影需要伸出边界这么多
             }
             else
             {
                 RootBorder.Effect = null;
             }
+
+            _shadowPad = pad;
+            RootBorder.Margin = new Thickness(pad);
+
+            double d = (pad + thickness) - oldOffset;
+            if (Math.Abs(d) > 0.01 && !double.IsNaN(Left))
+            {
+                Left -= d; Top -= d;                              // 已定位过的窗口：平移补偿
+            }
         }
         catch { /* 配置异常不影响贴图主功能 */ }
+    }
+
+    /// <summary>投影留白（DIP）：窗口比贴图本体大出的边距，供投影伸出窗口边界。</summary>
+    private double _shadowPad;
+
+    // ---- 2026-11-14 已打开贴图登记：设置保存后统一刷新边框/阴影 ----
+    private static readonly List<PinWindow> _open = new();
+
+    /// <summary>对所有打开中的贴图重新应用"贴图"页样式（设置保存时调用，立即生效）。</summary>
+    public static void ApplyStyleToAll()
+    {
+        foreach (var w in _open.ToArray())
+            w.ApplyPinAppearance();
     }
 
     /// <summary>Position window using physical px coords of the virtual desktop.</summary>
@@ -134,10 +171,12 @@ public partial class PinWindow : Window
         var mon = Core.MonitorManager.AtPoint(pxTopLeft.X, pxTopLeft.Y);
         _monitorScale = mon.ScaleX;
         ApplyZoom();
-        // 2026-11-04 完全重合：RootBorder 有 1 DIP 黑边框，图片内容在窗口 (1,1) 处，
-        // 左上各减 1 DIP 让图片与截图选区逐像素对齐（原实现偏移 1px）
-        Left = mon.Int32Rect.X + (pxTopLeft.X - mon.Int32Rect.X) / mon.ScaleX - 1;
-        Top = mon.Int32Rect.Y + (pxTopLeft.Y - mon.Int32Rect.Y) / mon.ScaleY - 1;
+        // 2026-11-14 修订：内容左上角在窗口内偏移 = 投影留白 + 边框厚度（原为固定 1），
+        // 减去它保证图片仍与截图选区逐像素对齐
+        Left = mon.Int32Rect.X + (pxTopLeft.X - mon.Int32Rect.X) / mon.ScaleX
+               - (_shadowPad + RootBorder.BorderThickness.Left);
+        Top = mon.Int32Rect.Y + (pxTopLeft.Y - mon.Int32Rect.Y) / mon.ScaleY
+              - (_shadowPad + RootBorder.BorderThickness.Top);
 
         // 2026-11-04 诊断：钉图重合问题排查（布局完成后输出关键数字）
         Dispatcher.BeginInvoke(() =>

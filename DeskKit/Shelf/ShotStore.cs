@@ -364,9 +364,14 @@ namespace ShotShelf
             foreach (var s in target) if (s.Pinned) pinnedCount++;
 
             var peers = target.Where(s => s.Pinned).ToList();
+            // 2026-11-14 晚间修订：只有滚轮/悬停"主动选中"的卡才掀开（PinTop=true）。
+            // 无选中时全部 PinTop=false——自然顶卡靠列表顺序本来就在最上，
+            // 之前回退到自然顶卡导致它永远带着放大效果不恢复（用户反馈）。
+            // 角标是"这里还有 N 张固定卡"的标识，独立挂在自然顶卡（最近固定）上。
             var selTop = _pinTopSel != null && peers.Contains(_pinTopSel)
                 ? _pinTopSel
-                : peers.LastOrDefault();                      // 默认自然顶卡（最近固定）
+                : null;
+            var badgeOwner = peers.LastOrDefault();           // 自然顶卡（最近固定）
 
             bool firstSeen = false;
             foreach (var item in target)
@@ -386,7 +391,8 @@ namespace ShotShelf
 
                 bool isTop = ReferenceEquals(item, selTop);
                 item.PinTop = isTop && pinnedCount >= 2;      // 单张固定卡无需掀
-                if (isTop && pinnedCount >= 2)
+                bool hasBadge = ReferenceEquals(item, badgeOwner) && pinnedCount >= 2;
+                if (hasBadge)
                 {
                     item.PinBadgeText = pinnedCount.ToString();
                     item.PinBadgeVisibility = System.Windows.Visibility.Visible;
@@ -577,20 +583,27 @@ namespace ShotShelf
         /// <summary>滚轮翻页当前掀开的固定卡（null = 自然顶卡）</summary>
         private ShotItem? _pinTopSel;
 
-        /// <summary>2026-11-14 用户要求：鼠标离开轨道后，掀开的固定卡恢复成默认顶卡（最近固定）。
-        /// 没有翻页选择时是 no-op，不动布局。</summary>
+        /// <summary>2026-11-14 晚间修订：掀开/悬停选中后回到"无选中"状态。
+        /// 无选中时所有固定卡 PinTop=false——自然顶卡本来就排在最后、视觉上在最上，
+        /// 不需要也不应该带 ZIndex=100 和放大效果（用户反馈：离开后最后一张一直保持放大）。</summary>
         public void ResetPinSelection()
         {
             if (_pinTopSel == null) return;
             _pinTopSel = null;
-            SyncViews();                                      // 角标/ZIndex 回到自然顶卡
+            SyncViews();                                      // 所有 PinTop 复位，动画缩回原状
         }
 
         /// <summary>2026-11-14 用户要求（hover 哪张显示哪张）：鼠标悬停固定卡 = 直接选中它
-        /// （走 PinTop 同一通道，被埋的卡悬停露边时立即掀到最上）。非固定卡/重复进入是 no-op。</summary>
+        /// （走 PinTop 同一通道，被埋的卡悬停露边时立即掀到最上）。
+        /// 2026-11-14 晚间修订：移到非固定卡上 = 立即复位选中（否则上一张固定卡
+        /// 一直保持掀开+放大，压住邻近卡片，悬停放大也失灵——用户实测反馈）。</summary>
         public void HoverPin(ShotItem item)
         {
-            if (!item.Pinned) return;
+            if (!item.Pinned)
+            {
+                ResetPinSelection();                          // 从固定卡移开 → 恢复原状
+                return;
+            }
             if (ReferenceEquals(_pinTopSel, item)) return;
             _pinTopSel = item;
             SyncViews();
