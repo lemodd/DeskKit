@@ -114,6 +114,58 @@ namespace ShotShelf
         /// <summary>固定时间（排序用：越早固定越靠前）</summary>
         public DateTime PinnedAt { get; set; }
 
+        // ============ 2026-11-14 固定卡片级联叠放 ============
+        // 固定组按 PinnedAt 升序排在轨道最前，组内越靠右越是"最近固定"；
+        // 布局层用负左边距让后续固定卡压住前一张、只露 13px 左缘（扑克牌式级联），
+        // 最近固定的天然成为顶卡。偏移由 ShotStore.SyncOne 按镜像集合实际顺序统一计算。
+
+        /// <summary>固定卡被压时露出的左缘宽度（px）</summary>
+        internal const double CascadePeek = 13;
+
+        /// <summary>级联偏移量：负左边距 = 8(常规左距) - (槽宽141 - 露边13)</summary>
+        internal static readonly System.Windows.Thickness TuckedMargin = new(-120, 10, 8, 0);
+        internal static readonly System.Windows.Thickness NormalCardMargin = new(8, 10, 8, 0);
+
+        /// <summary>卡片容器边距：普通 (8,10,8,0)；级联中被压的固定卡 (-120,10,8,0)。
+        /// 仅值变化才通知（SyncOne 每次 CollectionChanged 都会跑，防绑定风暴）。</summary>
+        private System.Windows.Thickness _cascadeMargin = new(8, 10, 8, 0);
+        public System.Windows.Thickness CascadeMargin
+        {
+            get => _cascadeMargin;
+            set
+            {
+                if (_cascadeMargin == value) return;
+                _cascadeMargin = value;
+                OnPropertyChanged(nameof(CascadeMargin));
+            }
+        }
+
+        /// <summary>叠堆数量角标文字（仅固定组顶卡且数量≥2 时非空）</summary>
+        private string? _pinBadgeText;
+        public string? PinBadgeText
+        {
+            get => _pinBadgeText;
+            set
+            {
+                if (_pinBadgeText == value) return;
+                _pinBadgeText = value;
+                OnPropertyChanged(nameof(PinBadgeText));
+            }
+        }
+
+        /// <summary>叠堆数量角标可见性</summary>
+        private System.Windows.Visibility _pinBadgeVisibility = System.Windows.Visibility.Collapsed;
+        public System.Windows.Visibility PinBadgeVisibility
+        {
+            get => _pinBadgeVisibility;
+            set
+            {
+                if (_pinBadgeVisibility == value) return;
+                _pinBadgeVisibility = value;
+                OnPropertyChanged(nameof(PinBadgeVisibility));
+            }
+        }
+
         /// <summary>卡片右上角📌标记的可见性（2026-10-26: 只显示图标不放文字）</summary>
         public System.Windows.Visibility PinVisibility =>
             System.Windows.Visibility.Visible; // hover 才显示,由样式触发器控制,恒可见但透明度变化
@@ -248,6 +300,40 @@ namespace ShotShelf
                 int cur = target.IndexOf(item);
                 if (cur < 0) target.Insert(i, item);
                 else if (cur != i) target.Move(cur, i);
+            }
+
+            // ③ 级联校准（2026-11-14 固定卡片叠放）：按镜像集合的实际顺序，
+            // 给每张固定卡算级联边距与角标。非固定卡统一复位（覆盖"取消固定"后的残留值）。
+            // 属性 setter 内部带值变化短路，这里放心直接赋值。
+            int pinnedCount = 0;
+            foreach (var s in target) if (s.Pinned) pinnedCount++;
+
+            int pinnedSeen = 0;
+            foreach (var item in target)
+            {
+                if (!item.Pinned)
+                {
+                    item.CascadeMargin = ShotItem.NormalCardMargin;
+                    item.PinBadgeText = null;
+                    item.PinBadgeVisibility = System.Windows.Visibility.Collapsed;
+                    continue;
+                }
+
+                bool tucked = pinnedSeen > 0;                       // 非本轨道第一张固定卡 → 被压
+                bool isTop = pinnedSeen == pinnedCount - 1;         // 组内最后一张 = 最近固定的 = 顶卡
+
+                item.CascadeMargin = tucked ? ShotItem.TuckedMargin : ShotItem.NormalCardMargin;
+                if (isTop && pinnedCount >= 2)
+                {
+                    item.PinBadgeText = pinnedCount.ToString();
+                    item.PinBadgeVisibility = System.Windows.Visibility.Visible;
+                }
+                else
+                {
+                    item.PinBadgeText = null;
+                    item.PinBadgeVisibility = System.Windows.Visibility.Collapsed;
+                }
+                pinnedSeen++;
             }
         }
 
@@ -401,6 +487,22 @@ namespace ShotShelf
             }
         }
 
+        /// <summary>2026-11-14 用户要求：滚轮循环切换固定卡——把 item 转到叠堆顶（toTop=true）或底。
+        /// 借 PinnedAt 排序实现（顶卡 = 组内 PinnedAt 最大），改动经 SavePins 持久化，重启后顺序保留。</summary>
+        public void RotatePin(ShotItem item, bool toTop)
+        {
+            if (!item.Pinned) return;
+            var peers = Shots.Where(s => s.Kind == item.Kind && s.Pinned).ToList();
+            if (peers.Count < 2) return;
+
+            if (toTop) item.PinnedAt = peers.Max(s => s.PinnedAt).AddMilliseconds(1);
+            else item.PinnedAt = peers.Min(s => s.PinnedAt).AddMilliseconds(-1);
+
+            SortPinnedFirst();
+            SavePins();
+            SyncViews();
+        }
+
         /// <summary>
         /// 新图入库：PNG 编码 →（可选）写盘 → 生成缩略图 → 加入列表 → 超限淘汰
         /// </summary>
@@ -521,9 +623,10 @@ namespace ShotShelf
         }
 
         /// <summary>删除指定项（内存与磁盘一起删；固定项拒绝删除）</summary>
-        public void Remove(ShotItem item)
+        public void Remove(ShotItem item, bool force = false)
         {
-            if (item.Pinned) return; // 固定的图不允许删除
+            // 2026-11-14：force=true 供"固定项删除确认后直接删"使用（Clear/ClearKind 仍跳过固定项）
+            if (item.Pinned && !force) return;
 
             Shots.Remove(item);
             if (item.CacheFileName != null)

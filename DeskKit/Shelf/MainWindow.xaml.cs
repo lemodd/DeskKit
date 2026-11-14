@@ -1795,7 +1795,7 @@ namespace ShotShelf
                 if (r != MessageBoxResult.Yes) return;
             }
 
-            _store.Remove(item);
+            _store.Remove(item, force: true);
             if (ReferenceEquals(_selected, item)) _selected = null; // 删掉的项不能再当作选中项
             UpdateStatus($"第 {item.Index} 项已删除");
         }
@@ -1926,8 +1926,29 @@ namespace ShotShelf
         /// 两条轨道都是"水平单行 + 超出横向滚动"，滚轮默认的纵向滚动在这里没用，
         /// 所以把滚轮的上下意图翻译成左右移动；本行内容没超出宽度时完全不拦（交回默认）。
         /// </summary>
+        /// 2026-11-14 用户要求：鼠标悬停在固定卡片上时，滚轮循环切换级联叠堆顶卡——
+        /// 滚轮向下 = 这张卡转到顶层，向上 = 转到底层；该轨道固定数 ≥ 2 才接管，
+        /// 否则放行给下面的横向滚动手势。
+        /// </summary>
+        private bool TryPinWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject d) return false;
+            var src = d;
+            while (src != null && src is not ListBoxItem)
+                src = System.Windows.Media.VisualTreeHelper.GetParent(src);
+            if (src is not ListBoxItem lbi || lbi.DataContext is not ShotItem item || !item.Pinned) return false;
+
+            int pinnedCount = _store.Shots.Count(s => s.Kind == item.Kind && s.Pinned);
+            if (pinnedCount < 2) return false;
+
+            _store.RotatePin(item, toTop: e.Delta < 0);
+            e.Handled = true;
+            return true;
+        }
+
         private void OnListPreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
+            if (TryPinWheel(sender, e)) return; // 固定卡滚轮轮换优先
             if (sender is not ListBox list) return;
 
             ScrollViewer? sv;
