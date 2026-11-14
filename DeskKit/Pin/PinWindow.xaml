@@ -55,10 +55,11 @@
                 <Button x:Name="TbWidth" Content="中" Style="{StaticResource CapBtn}" Click="TbWidth_Click" ToolTip="线宽 (点击切换)"/>
                 <Button x:Name="TbUndo" Content="↶" Style="{StaticResource CapBtn}" Click="TbUndo_Click" ToolTip="撤销 (Ctrl+Z)"/>
                 <Button x:Name="TbRedo" Content="↷" Style="{StaticResource CapBtn}" Click="TbRedo_Click" ToolTip="重做 (Ctrl+Y)"/>
-                <Button x:Name="TbCopy" Content="复" Style="{StaticResource CapBtn}" Click="TbCopy_Click" ToolTip="复制到剪贴板 (Enter/Ctrl+C)"/>
+                <!-- 2026-11-14 按钮顺序与截图工具条统一：撤销/重做 → OCR → 保存 → 复制 → 关闭 -->
                 <!-- 2026-11-05 OCR 识文：图上拖框识别（图标经 SetIcon 挂 Icons.Ocr） -->
                 <Button x:Name="TbOcr" Style="{StaticResource CapBtn}" Click="TbOcr_Click" ToolTip="OCR 识文：在图上拖框，只识别框内文字（复制到剪贴板）"/>
                 <Button x:Name="TbSave" Content="保" Style="{StaticResource CapBtn}" Click="TbSave_Click" ToolTip="保存到文件 (Ctrl+S 另存)"/>
+                <Button x:Name="TbCopy" Content="复" Style="{StaticResource CapBtn}" Click="TbCopy_Click" ToolTip="复制到剪贴板 (Enter/Ctrl+C)"/>
                 <Button x:Name="TbCloseX" Content="✕" Style="{StaticResource CapBtn}" Click="TbCloseX_Click" ToolTip="关闭贴图 (Esc/双击)"/>
             </StackPanel>
         </Border>

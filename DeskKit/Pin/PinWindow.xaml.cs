@@ -323,15 +323,18 @@ public partial class PinWindow : Window
         SetIcon(TbMosaic, DeskKit.Icons.Mosaic);
         SetIcon(TbNumber, DeskKit.Icons.Number);
         // 2026-11-12 三修：颜色图标放大到 18 + stroke 加粗线宽
-        SetIcon(TbColor, DeskKit.Icons.Palette, stroke: 0.7, size: 18);
-        // 2026-11-12 用户要求：颜色图标不跟随当前标注颜色（不再变红），固定与其他图标一致的白色；
+        // 2026-11-14 四修：stroke 与截图工具条统一为 0.6
+        SetIcon(TbColor, DeskKit.Icons.Palette, stroke: 0.6, size: 18);
+        // 2026-11-12 用户要求：颜色图标不跟随当前标注颜色（不再变红），固定与其他图标一致的灰色；
         // Foreground 仍记录当前颜色供换色逻辑使用，只解绑图标的 Fill/Stroke
+        // 2026-11-14 五修：白色是深底时代遗留，白底上隐形 → 改深灰（与截图工具条 2026-11-12 版一致）
         if (TbColor.Content is System.Windows.Shapes.Path cpColor)
         {
             System.Windows.Data.BindingOperations.ClearBinding(cpColor, System.Windows.Shapes.Path.FillProperty);
             System.Windows.Data.BindingOperations.ClearBinding(cpColor, System.Windows.Shapes.Path.StrokeProperty);
-            cpColor.Fill = Brushes.White;
-            cpColor.Stroke = Brushes.White;
+            var gray = System.Windows.Media.Color.FromRgb(0x44, 0x4A, 0x52);
+            cpColor.Fill = new System.Windows.Media.SolidColorBrush(gray);
+            cpColor.Stroke = new System.Windows.Media.SolidColorBrush(gray);
         }
         // 2026-11-04 用户要求：线宽也用图标（line_weight），当前档位在 tooltip 显示
         // 2026-11-12 二改：三档各用一个图标（横杠细/中/粗），初始显示当前档位图标
