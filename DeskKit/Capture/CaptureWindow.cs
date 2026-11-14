@@ -82,6 +82,7 @@ public sealed partial class CaptureWindow : Window
     private BitmapSource _monCrop = null!;
     private Canvas _magLayer = null!, _crossLayer = null!, _annLayer = null!, _handleLayer = null!;
     private Image _magImg = null!;
+    private Canvas _magCross = null!;   // 2026-11-14 用户要求：放大镜中央十字准星
     private Border _sizeInfo = null!;   // 2026-11-12 选区尺寸框升级：宽/高输入框可编辑
     private System.Windows.Controls.TextBox _wBox = null!, _hBox = null!;
     // ---- 2026-10-30 放大镜信息框（用户参考截图样式：坐标 / 色块+rgb / 快捷键提示） ----
@@ -295,6 +296,32 @@ public sealed partial class CaptureWindow : Window
             Visibility = Visibility.Collapsed
         };
         _magBorder = magBorder;
+
+        // 2026-11-14 十字准星：放大镜中央，白线带黑边（亮暗底都可见），随放大镜同显同隐
+        _magCross = new Canvas
+        {
+            Width = MagBox, Height = MagBox,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed
+        };
+        var reticleWhite = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+        reticleWhite.Freeze();
+        var reticleBlack = new SolidColorBrush(Color.FromArgb(0x99, 0x00, 0x00, 0x00));
+        reticleBlack.Freeze();
+        // 黑色描边层（略粗）+ 白色主线层，保证任何底色上清晰
+        foreach (var (stroke, w) in new[] { (reticleBlack, 3.0), (reticleWhite, 1.2) })
+        {
+            _magCross.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = 0, Y1 = MagBox / 2.0, X2 = MagBox, Y2 = MagBox / 2.0,
+                Stroke = stroke, StrokeThickness = w
+            });
+            _magCross.Children.Add(new System.Windows.Shapes.Line
+            {
+                X1 = MagBox / 2.0, Y1 = 0, X2 = MagBox / 2.0, Y2 = MagBox,
+                Stroke = stroke, StrokeThickness = w
+            });
+        }
         // 信息框（参考用户截图样式）：第一行坐标，第二行色块+颜色值，第三行快捷键提示
         // 2026-11-04 风格统一：原黑底白字 → 浅色白底 + 浅灰边 + 深灰字（与工具条同风格）
         var magPanel = new StackPanel { Orientation = Orientation.Vertical };
@@ -343,6 +370,7 @@ public sealed partial class CaptureWindow : Window
             Visibility = Visibility.Collapsed
         };
         _magLayer.Children.Add(_magImg);
+        _magLayer.Children.Add(_magCross);      // 2026-11-14 十字准星：图片之上、蓝框之下
         _magLayer.Children.Add(magBorder);
         _magLayer.Children.Add(_magInfo);
         _root.Children.Add(_magLayer);
@@ -1002,8 +1030,9 @@ public sealed partial class CaptureWindow : Window
             double my = Math.Clamp(dip.Y + 16, 0, Math.Max(0, ActualHeight - MagBox - 20));
             Canvas.SetLeft(_magImg, mx); Canvas.SetTop(_magImg, my);
             Canvas.SetLeft(_magBorder, mx); Canvas.SetTop(_magBorder, my);
+            Canvas.SetLeft(_magCross, mx); Canvas.SetTop(_magCross, my);   // 准星随放大镜
             Canvas.SetLeft(_magInfo, mx); Canvas.SetTop(_magInfo, my + MagBox);
-            _magImg.Visibility = _magBorder.Visibility = _magInfo.Visibility = Visibility.Visible;
+            _magImg.Visibility = _magBorder.Visibility = _magCross.Visibility = _magInfo.Visibility = Visibility.Visible;
 
             var c = SamplePhysical(pxX, pxY);
             _lastSampleColor = c;
@@ -1013,7 +1042,7 @@ public sealed partial class CaptureWindow : Window
         }
         else
         {
-            _magImg.Visibility = _magBorder.Visibility = _magInfo.Visibility = Visibility.Collapsed;
+            _magImg.Visibility = _magBorder.Visibility = _magCross.Visibility = _magInfo.Visibility = Visibility.Collapsed;
         }
         UpdateUi();
     }
@@ -1058,9 +1087,9 @@ public sealed partial class CaptureWindow : Window
         Cursor = Cursors.Arrow;
         _pickBtn.Background = Brushes.Transparent;
         if (_pickToast != null) { _root.Children.Remove(_pickToast); _pickToast = null; }
-        // 吸管专属显示收起（放大镜/信息框/十字线只在取色与框选阶段出现）
+        // 吸管专属显示收起（放大镜/准星/信息框/十字线只在取色与框选阶段出现）
         _crossH.Visibility = _crossV.Visibility = Visibility.Collapsed;
-        _magImg.Visibility = _magBorder.Visibility = _magInfo.Visibility = Visibility.Collapsed;
+        _magImg.Visibility = _magBorder.Visibility = _magCross.Visibility = _magInfo.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>采样 dip 处像素（取自冻结截图 _pxData，不受遮罩影响），按当前格式复制 + 气泡反馈，取完退出。</summary>
