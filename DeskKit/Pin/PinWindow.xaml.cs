@@ -206,6 +206,12 @@ public partial class PinWindow : Window
             else UpdateAnnShape(p);
             return;
         }
+        // 2026-11-14 吸管模式：色值浮标实时跟随鼠标（不与窗口拖动/画图冲突）
+        if (_picking)
+        {
+            UpdatePickHover(e.GetPosition(AnnCanvas), e.GetPosition(AnnCanvas.Parent as Panel ?? AnnCanvas));
+            return;
+        }
         if (!_dragging) return;
         var sp = PointToScreen(e.GetPosition(this));
         // screen deltas are in device px; Left/Top are in DIP
@@ -229,6 +235,30 @@ public partial class PinWindow : Window
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (_annTextBox != null) return; // 输入文字时按键全归 TextBox
+
+        // 2026-11-14 吸管模式快捷键（先于其它键）：Shift 切 HEX/RGB，C 复制当前值
+        if (_picking)
+        {
+            if (e.Key is Key.LeftShift or Key.RightShift)
+            {
+                _pickHexFormat = !_pickHexFormat;
+                if (_pickHasLast) _pickHoverText.Text = FormatPickColor(_pickLast);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.C)
+            {
+                if (_pickHasLast)
+                {
+                    string text = FormatPickColor(_pickLast);
+                    try { Clipboard.SetText(text); } catch { /* 剪贴板被占不崩 */ }
+                    ShowPickToast(_pickLast, text);
+                    StopPick();
+                }
+                e.Handled = true;
+                return;
+            }
+        }
 
         double step = Keyboard.Modifiers == ModifierKeys.Control ? 10 : 1;
         switch (e.Key)
@@ -381,6 +411,18 @@ public partial class PinWindow : Window
 
     private bool _picking;                  // 取色模式：光标十字，下一击采样颜色
     private Border? _pickToast;             // 取色结果小气泡（1.5s 自动消失）
+    // 2026-11-14 二改（用户要求）：取色时实时显示鼠标处色值（色块+文本跟随光标），
+    // C 复制当前值、Shift 切 HEX/RGB 格式——与截图吸管一致
+    private Border? _pickHover;             // 跟随光标的色值浮标
+    private System.Windows.Shapes.Rectangle _pickHoverSwatch = null!;
+    private TextBlock _pickHoverText = null!;
+    private bool _pickHexFormat;            // false = rgb(r, g, b)，true = #RRGGBB
+    private Color _pickLast;
+    private bool _pickHasLast;
+
+    private string FormatPickColor(Color c) => _pickHexFormat
+        ? global::DeskKit.ColorPick.ToHex(c)
+        : $"rgb({c.R}, {c.G}, {c.B})";
 
     private void TbEye_Click(object sender, RoutedEventArgs e)
     {
@@ -394,6 +436,74 @@ public partial class PinWindow : Window
         else StopPick();
     }
 
+    /// <summary>确保取色浮标已创建并挂在贴图宿主面板上（懒创建）。</summary>
+    private void EnsurePickHover(Panel host)
+    {
+        if (_pickHover != null) return;
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        _pickHoverSwatch = new System.Windows.Shapes.Rectangle
+        {
+            Width = 14, Height = 14, RadiusX = 3, RadiusY = 3,
+            Stroke = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _pickHoverText = new TextBlock
+        {
+            FontSize = 11.5, Margin = new Thickness(5, 0, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x38, 0x3F)),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        sp.Children.Add(_pickHoverSwatch);
+        sp.Children.Add(_pickHoverText);
+        _pickHover = new Border
+        {
+            Child = sp, Background = Brushes.White,
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 4, 7, 4),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+        };
+        host.Children.Add(_pickHover);
+    }
+
+    /// <summary>取色浮标跟随鼠标：采样贴图像素，图外隐藏。winP 相对宿主面板。</summary>
+    private void UpdatePickHover(Point canvasP, Point winP)
+    {
+        if (AnnCanvas.Parent is not Panel host) return;
+        EnsurePickHover(host);
+        bool onImage = PinImage.ActualWidth >= 1 && PinImage.ActualHeight >= 1
+            && canvasP.X >= 0 && canvasP.Y >= 0
+            && canvasP.X < PinImage.ActualWidth && canvasP.Y < PinImage.ActualHeight;
+        if (!onImage)
+        {
+            _pickHover!.Visibility = Visibility.Collapsed;
+            return;
+        }
+        double rx = _image.PixelWidth / PinImage.ActualWidth;
+        double ry = _image.PixelHeight / PinImage.ActualHeight;
+        int pxX = (int)Math.Floor(canvasP.X * rx), pxY = (int)Math.Floor(canvasP.Y * ry);
+        if (!global::DeskKit.ColorPick.TrySample(_image, pxX, pxY, out var c))
+        {
+            _pickHover!.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _pickLast = c;
+        _pickHasLast = true;
+        _pickHoverSwatch.Fill = new SolidColorBrush(c);
+        _pickHoverText.Text = FormatPickColor(c);
+        _pickHover!.Visibility = Visibility.Visible;
+        // 跟随光标右下，贴边时翻到左侧/上侧防出界
+        double hx = winP.X + 14, hy = winP.Y + 16;
+        if (hx + _pickHover.ActualWidth > host.ActualWidth && winP.X > _pickHover.ActualWidth + 10)
+            hx = winP.X - _pickHover.ActualWidth - 10;
+        if (hy + _pickHover.ActualHeight > host.ActualHeight && winP.Y > _pickHover.ActualHeight + 10)
+            hy = winP.Y - _pickHover.ActualHeight - 10;
+        _pickHover.Margin = new Thickness(Math.Max(0, hx), Math.Max(0, hy), 0, 0);
+    }
+
     private void StopPick()
     {
         _picking = false;
@@ -401,10 +511,12 @@ public partial class PinWindow : Window
         TbEye.ClearValue(BackgroundProperty);
         if (_pickToast != null && AnnCanvas.Parent is Panel host)
         { host.Children.Remove(_pickToast); _pickToast = null; }
+        if (_pickHover != null && AnnCanvas.Parent is Panel host2)
+        { host2.Children.Remove(_pickHover); _pickHover = null; }
     }
 
     /// <summary>采样贴图上 canvasP 处像素（Stretch=None/缩放都按显示尺寸比例换算），
-    /// HEX 复制 + 气泡反馈，取完自动退出取色模式。</summary>
+    /// 按当前显示格式复制 + 气泡反馈，取完自动退出取色模式。</summary>
     private void PickColorAt(Point canvasP)
     {
         if (PinImage.ActualWidth < 1 || PinImage.ActualHeight < 1) return;
@@ -412,10 +524,10 @@ public partial class PinWindow : Window
         double ry = _image.PixelHeight / PinImage.ActualHeight;
         int pxX = (int)Math.Floor(canvasP.X * rx), pxY = (int)Math.Floor(canvasP.Y * ry);
         if (!global::DeskKit.ColorPick.TrySample(_image, pxX, pxY, out var c)) return;
-        string hex = global::DeskKit.ColorPick.ToHex(c);
-        try { Clipboard.SetText(hex); } catch { /* 剪贴板被占不崩 */ }
-        global::MiniPix.Core.Log.Write($"pin pick color: {hex}");
-        ShowPickToast(c, hex);
+        string text = FormatPickColor(c);
+        try { Clipboard.SetText(text); } catch { /* 剪贴板被占不崩 */ }
+        global::MiniPix.Core.Log.Write($"pin pick color: {text}");
+        ShowPickToast(c, text);
         StopPick();
     }
 

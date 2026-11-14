@@ -524,7 +524,7 @@ public sealed partial class CaptureWindow : Window
         TbI(DeskKit.Icons.Long, "长截图：程序自动滚动页面逐段拼接，到底自动完成", StartLongCapture, stroke: 1.1, size: 18);
         // 2026-11-14 吸管取色（用户要求+用户提供图标）：点击进入取色模式，光标变十字，
         // 再点截图任意位置采样该点颜色（HEX 入剪贴板 + 小气泡反馈），取完自动退出；Esc/再点按钮取消
-        _pickBtn = TbI(DeskKit.Icons.Eyedropper, "吸管取色：点击后光标变十字，再点截图任意位置复制该点颜色 (Esc 取消)", TogglePickColor, stroke: 0.4);
+        _pickBtn = TbI(DeskKit.Icons.Eyedropper, "吸管取色：实时显示鼠标处颜色 · 点按或 C 复制 · Shift 切 HEX/RGB · Esc 退出", TogglePickColor, stroke: 0.4);
         TbI(DeskKit.Icons.Pin, "贴图 (P)", () => Finish(pin: true));
         TbI(DeskKit.Icons.Save, "保存到文件 (S)", QuickSave);
         TbI(DeskKit.Icons.Copy, "复制到剪贴板 (Enter/双击)", () => Finish(copy: true));
@@ -800,6 +800,11 @@ public sealed partial class CaptureWindow : Window
             }
             UpdateHoverUi(p);
         }
+        else if (_picking)
+        {
+            // 2026-11-14 吸管模式：放大镜+颜色值实时跟随鼠标（用户要求与框选阶段一致）
+            UpdateHoverUi(p);
+        }
         else if (_dragging && _tool == Tool.None)
         {
             MoveOrResizeSelection(p);
@@ -875,9 +880,28 @@ public sealed partial class CaptureWindow : Window
             return;
         }
 
-        // 2026-11-14 吸管取色模式：Esc 只退出取色，不关窗
+        // 2026-11-14 吸管取色模式：Shift 切格式 / C 复制当前值 / Esc 退出取色（不关窗）
         if (_picking)
         {
+            if (k == Key.LeftShift || k == Key.RightShift)
+            {
+                _magHexFormat = !_magHexFormat;
+                _magColorText.Text = FormatSampleColor(_lastSampleColor);
+                e.Handled = true;
+                return;
+            }
+            if (k == Key.C)
+            {
+                // 2026-11-14：直接复制信息框正在显示的值（所见即所得），
+                // 不重新采样——鼠标在按 C 前若移动过，重采样会与显示值不一致
+                string text = _magColorText.Text;
+                try { Clipboard.SetText(text); } catch { /* 剪贴板被占不崩 */ }
+                MiniPix.Core.Log.Write($"pick color: {text}");
+                ShowPickToast(_hoverDip, _lastSampleColor, text);
+                StopPick();
+                e.Handled = true;
+                return;
+            }
             StopPick();
             e.Handled = true;
             return;
@@ -959,10 +983,10 @@ public sealed partial class CaptureWindow : Window
         Canvas.SetLeft(_crossH, 0); Canvas.SetTop(_crossH, Math.Round(dip.Y));
         Canvas.SetLeft(_crossV, Math.Round(dip.X)); Canvas.SetTop(_crossV, 0);
         _crossH.Visibility = _crossV.Visibility =
-            _phase == Phase.Selecting ? Visibility.Visible : Visibility.Collapsed;
+            _phase == Phase.Selecting || _picking ? Visibility.Visible : Visibility.Collapsed;
 
-        // magnifier follows cursor (only while a region is being picked)
-        if (_phase == Phase.Selecting)
+        // magnifier follows cursor (2026-11-14：吸管模式也显示——实时颜色值 + C/Shift 快捷键)
+        if (_phase == Phase.Selecting || _picking)
         {
             var px = DipToPx(dip);
             int pxX = (int)Math.Round(px.X), pxY = (int)Math.Round(px.Y);
@@ -1022,6 +1046,7 @@ public sealed partial class CaptureWindow : Window
             _picking = true;
             Cursor = Cursors.Cross;
             _pickBtn.Background = new SolidColorBrush(Color.FromArgb(0x44, 0x1E, 0x88, 0xE5));
+            UpdateHoverUi(_hoverDip);         // 立即显示放大镜+颜色值（不等鼠标移动）
             MiniPix.Core.Log.Write("pick color: on");
         }
         else StopPick();
@@ -1033,17 +1058,20 @@ public sealed partial class CaptureWindow : Window
         Cursor = Cursors.Arrow;
         _pickBtn.Background = Brushes.Transparent;
         if (_pickToast != null) { _root.Children.Remove(_pickToast); _pickToast = null; }
+        // 吸管专属显示收起（放大镜/信息框/十字线只在取色与框选阶段出现）
+        _crossH.Visibility = _crossV.Visibility = Visibility.Collapsed;
+        _magImg.Visibility = _magBorder.Visibility = _magInfo.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>采样 dip 处像素（取自冻结截图 _pxData，不受遮罩影响），HEX 复制 + 气泡反馈，取完退出。</summary>
+    /// <summary>采样 dip 处像素（取自冻结截图 _pxData，不受遮罩影响），按当前格式复制 + 气泡反馈，取完退出。</summary>
     private void PickColorAt(Point dip)
     {
         var px = DipToPx(dip);
         var c = SamplePhysical((int)Math.Round(px.X), (int)Math.Round(px.Y));
-        string hex = DeskKit.ColorPick.ToHex(c);
-        try { Clipboard.SetText(hex); } catch { /* 剪贴板被占不崩 */ }
-        MiniPix.Core.Log.Write($"pick color: {hex}");
-        ShowPickToast(dip, c, hex);
+        string text = FormatSampleColor(c);   // 2026-11-14：复制当前显示格式（Shift 切换）
+        try { Clipboard.SetText(text); } catch { /* 剪贴板被占不崩 */ }
+        MiniPix.Core.Log.Write($"pick color: {text}");
+        ShowPickToast(dip, c, text);
         StopPick();
     }
 
