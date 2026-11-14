@@ -166,6 +166,20 @@ namespace ShotShelf
             }
         }
 
+        /// <summary>2026-11-14：该固定卡是否为滚轮翻页选中的"掀开顶卡"。
+        /// 卡片容器样式的 DataTrigger 据此抬 Panel.ZIndex（叠堆布局不动，仅换掀开的那张）。</summary>
+        private bool _pinTop;
+        public bool PinTop
+        {
+            get => _pinTop;
+            set
+            {
+                if (_pinTop == value) return;
+                _pinTop = value;
+                OnPropertyChanged(nameof(PinTop));
+            }
+        }
+
         /// <summary>卡片右上角📌标记的可见性（2026-10-26: 只显示图标不放文字）</summary>
         public System.Windows.Visibility PinVisibility =>
             System.Windows.Visibility.Visible; // hover 才显示,由样式触发器控制,恒可见但透明度变化
@@ -302,27 +316,36 @@ namespace ShotShelf
                 else if (cur != i) target.Move(cur, i);
             }
 
-            // ③ 级联校准（2026-11-14 固定卡片叠放）：按镜像集合的实际顺序，
-            // 给每张固定卡算级联边距与角标。非固定卡统一复位（覆盖"取消固定"后的残留值）。
-            // 属性 setter 内部带值变化短路，这里放心直接赋值。
+            // ③ 级联校准（2026-11-14 固定卡片叠放）：布局完全由自然顺序决定（第一张固定卡
+            //    常规边距起头，其余被压露 13px 边缘），**不随滚轮翻页变化**；
+            //    滚轮翻页只切换 PinTop（容器 ZIndex 掀到最上）与角标归属。
+            //    属性 setter 内部带值变化短路，这里放心直接赋值。
             int pinnedCount = 0;
             foreach (var s in target) if (s.Pinned) pinnedCount++;
 
-            int pinnedSeen = 0;
+            var peers = target.Where(s => s.Pinned).ToList();
+            var selTop = _pinTopSel != null && peers.Contains(_pinTopSel)
+                ? _pinTopSel
+                : peers.LastOrDefault();                      // 默认自然顶卡（最近固定）
+
+            bool firstSeen = false;
             foreach (var item in target)
             {
                 if (!item.Pinned)
                 {
                     item.CascadeMargin = ShotItem.NormalCardMargin;
+                    item.PinTop = false;
                     item.PinBadgeText = null;
                     item.PinBadgeVisibility = System.Windows.Visibility.Collapsed;
                     continue;
                 }
 
-                bool tucked = pinnedSeen > 0;                       // 非本轨道第一张固定卡 → 被压
-                bool isTop = pinnedSeen == pinnedCount - 1;         // 组内最后一张 = 最近固定的 = 顶卡
+                // 布局槽固定：组内第一张常规起头，其余被压（与选中谁无关）
+                item.CascadeMargin = firstSeen ? ShotItem.TuckedMargin : ShotItem.NormalCardMargin;
+                firstSeen = true;
 
-                item.CascadeMargin = tucked ? ShotItem.TuckedMargin : ShotItem.NormalCardMargin;
+                bool isTop = ReferenceEquals(item, selTop);
+                item.PinTop = isTop && pinnedCount >= 2;      // 单张固定卡无需掀
                 if (isTop && pinnedCount >= 2)
                 {
                     item.PinBadgeText = pinnedCount.ToString();
@@ -333,7 +356,6 @@ namespace ShotShelf
                     item.PinBadgeText = null;
                     item.PinBadgeVisibility = System.Windows.Visibility.Collapsed;
                 }
-                pinnedSeen++;
             }
         }
 
@@ -487,29 +509,33 @@ namespace ShotShelf
             }
         }
 
-        /// <summary>2026-11-14 用户要求（二改）：滚轮循环切换固定卡——不是移动悬停的那张，
-        /// 而是整个叠堆循环翻页：滚轮向下 = 当前顶卡的下一张（循环）顶上来，
-        /// 向上 = 顶卡下面的前一张顶上来。item 仅用于判定悬停目标和所属轨道。
-        /// 借 PinnedAt 排序实现（顶卡 = 组内 PinnedAt 最大），改动经 SavePins 持久化，重启后顺序保留。</summary>
+        /// <summary>2026-11-14 用户要求（四改·终版）：滚轮翻页切换固定卡——
+        /// 叠堆布局完全不动（不重排列表、不挪卡片），只切换"掀开哪一张"：
+        /// 被选中的卡通过容器 Panel.ZIndex=10 抬到最上层完整露出，其余保持原位被压。
+        /// 滚轮向下 = 顶卡下面那张（自然序往前）掀开；向上 = 反向回翻。
+        /// item 仅用于判定悬停目标所属轨道。选择不持久化，重启回到自然顶卡（最近固定）。</summary>
         public void RotatePin(ShotItem item, bool toTop)
         {
             if (!item.Pinned) return;
             var peers = Shots.Where(s => s.Kind == item.Kind && s.Pinned)
                              .OrderBy(s => s.PinnedAt)
-                             .ToList();                       // 升序：末位 = 当前顶卡
+                             .ToList();
             if (peers.Count < 2) return;
 
-            int topIdx = peers.Count - 1;
-            var next = toTop
-                ? peers[(topIdx + 1) % peers.Count]           // 下一张（底卡循环到顶）
-                : peers[(topIdx - 1 + peers.Count) % peers.Count]; // 前一张（顶卡下移）
+            int sel = _pinTopSel != null && _pinTopSel.Pinned && peers.Contains(_pinTopSel)
+                ? peers.IndexOf(_pinTopSel)
+                : peers.Count - 1;                            // 默认自然顶卡（最近固定）
 
-            next.PinnedAt = peers.Max(s => s.PinnedAt).AddMilliseconds(1);
+            sel = toTop ? sel - 1 : sel + 1;                  // 下=前一张掀开，上=回翻
+            if (sel < 0) sel = peers.Count - 1;               // 循环
+            if (sel >= peers.Count) sel = 0;
+            _pinTopSel = peers[sel];
 
-            SortPinnedFirst();
-            SavePins();
-            SyncViews();
+            SyncViews();                                      // 只重算 ZIndex/角标，不动布局
         }
+
+        /// <summary>滚轮翻页当前掀开的固定卡（null = 自然顶卡）</summary>
+        private ShotItem? _pinTopSel;
 
         /// <summary>
         /// 新图入库：PNG 编码 →（可选）写盘 → 生成缩略图 → 加入列表 → 超限淘汰

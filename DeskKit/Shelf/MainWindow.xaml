@@ -46,6 +46,10 @@
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Panel.ZIndex" Value="99"/>
                 </Trigger>
+                <!-- 2026-11-14：滚轮翻页选中的固定卡掀到叠堆最上（布局槽不动，仅抬层级） -->
+                <DataTrigger Binding="{Binding PinTop}" Value="True">
+                    <Setter Property="Panel.ZIndex" Value="10"/>
+                </DataTrigger>
             </Style.Triggers>
             <Setter Property="Template">
                 <Setter.Value>
