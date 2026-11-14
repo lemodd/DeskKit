@@ -59,9 +59,9 @@ public partial class PinWindow : Window
     /// <param name="sourceScale">来源屏 DPI scale：截图钉图传截图屏的 _sx（位图 DPI 已含屏幕 DPI）；
     /// 剪贴板等外源图默认 1.0（位图 DPI=96）。缩放系数 = _zoom × sourceScale / 目标屏scale，
     /// 同屏钉截图时 = 1，物理尺寸与选区完全一致。</param>
-    public static PinWindow Show(BitmapSource image, Point pxTopLeft, double sourceScale = 1.0)
+    public static PinWindow Show(BitmapSource image, Point pxTopLeft, double sourceScale = 1.0, bool addToShelf = true)
     {
-        var win = new PinWindow(image) { _srcScale = sourceScale };
+        var win = new PinWindow(image, addToShelf) { _srcScale = sourceScale };
         win._initialPx = pxTopLeft;
         // 2026-11-04 修复"钉住时图片放大/错位"：先按目标屏设好缩放再 Show，
         // 保证首次布局尺寸就正确（原顺序 Show→PlacePhysical 改 LayoutTransform，
@@ -73,7 +73,7 @@ public partial class PinWindow : Window
         return win;
     }
 
-    private PinWindow(BitmapSource image)
+    private PinWindow(BitmapSource image, bool addToShelf = true)
     {
         _image = image;
         InitializeComponent();
@@ -90,7 +90,10 @@ public partial class PinWindow : Window
 
         // 2026-10-30 用户要求：被钉住的图片也要放进暂存架。
         // 走 AddExternalImage（与剪贴板同款指纹去重，防止"截图后紧接着钉住"收两张）
-        global::DeskKit.App.AddImageToShelf(image);
+        // 2026-11-14：从暂存架卡片点出的贴图（addToShelf=false）不回写——图本来就在暂存架，
+        // 全图重新解码后指纹对不上，会每钉一次多一份重复卡片
+        if (addToShelf)
+            global::DeskKit.App.AddImageToShelf(image);
     }
 
     /// <summary>Position window using physical px coords of the virtual desktop.</summary>

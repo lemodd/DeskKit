@@ -22,6 +22,9 @@ namespace ShotShelf
     {
         private ClipboardWatcher? _watcher;
         private readonly ShotStore _store = new();
+
+        // 2026-11-14：图片卡片 → 贴图 的存活窗口登记（同一卡片重复点击=激活已有贴图，不再多钉）
+        private readonly System.Collections.Generic.Dictionary<ShotItem, MiniPix.Pin.PinWindow> _itemPins = new();
         private bool _realExit = false; // S6: 区分"最小化到托盘"与真正退出（托盘菜单退出时置 true）
         // DeskKit 合并改动：原 TrayIcon 字段删除 —— 托盘由 DeskKit 统一管理（KitTray）
         private readonly AppConfig _config;
@@ -1846,6 +1849,30 @@ namespace ShotShelf
             if (!onItem) return;
 
             if (sender is not ListBox list || list.SelectedItem is not ShotItem item) return;
+
+            // 2026-11-14 用户要求：图片卡片单击不进预览窗，直接转贴图（与 Ctrl+Alt+V 同一条路）。
+            // 全图取不到（缓存文件丢失）时回退预览窗兜底；文字卡片仍走预览窗（全选复制有用）。
+            // 同一张卡片已有贴图时 → 激活置前而不是再钉一张；贴图不回写暂存架（图本来就在）。
+            if (!item.IsText)
+            {
+                var img = _store.GetFullImage(item);
+                if (img != null)
+                {
+                    if (_itemPins.TryGetValue(item, out var existing) && existing.IsLoaded)
+                    {
+                        existing.Activate();
+                    }
+                    else
+                    {
+                        var p = System.Windows.Forms.Cursor.Position;
+                        var pin = MiniPix.Pin.PinWindow.Show(
+                            img, new System.Windows.Point(p.X, p.Y), addToShelf: false);
+                        pin.Closed += (_, _) => _itemPins.Remove(item);
+                        _itemPins[item] = pin;
+                    }
+                    return;
+                }
+            }
 
             var preview = new PreviewWindow(item, _store, _config) { Owner = this };
             preview.Show();
