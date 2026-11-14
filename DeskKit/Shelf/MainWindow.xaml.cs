@@ -76,6 +76,11 @@ namespace ShotShelf
             LstShots.ItemsSource = _store.Images;
             LstTexts.ItemsSource = _store.Texts;
 
+            // ---- 2026-11-14 设置窗口新功能：级联露边/文字字号按配置初始化 ----
+            // 必须在任何卡片入列之前（ShotItem 静态边距 + 既有卡实例的字号）
+            ShotItem.ApplyCascadePeek(_config.CascadePeekPx);
+            _store.ApplyTextFontSize(_config.TextCardFontSize);
+
             // ---- 2026-11-14 滚轮翻页收尾：鼠标离开轨道就把掀开的固定卡恢复成默认顶卡 ----
             LstShots.MouseLeave += (_, _) => _store.ResetPinSelection();
             LstTexts.MouseLeave += (_, _) => _store.ResetPinSelection();
@@ -1321,6 +1326,9 @@ namespace ShotShelf
             _store.MaxShots = _config.MaxShots;
             _store.SetThumbSize(_config.ThumbSize);
             _watcher.MaxTextLength = _config.MaxTextLength;
+            // 2026-11-14 新功能：级联露边 + 文字卡片字号实时生效
+            _store.ApplyCascadePeek(_config.CascadePeekPx);
+            _store.ApplyTextFontSize(_config.TextCardFontSize);
             UpdatePeekStrip();
             if (_snapEdge == "None" || _animating) return;
             AnimateWindowTo(_edgeHidden ? EdgeHiddenPos() : EdgeShownPos());

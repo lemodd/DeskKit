@@ -77,6 +77,7 @@ public partial class PinWindow : Window
     {
         _image = image;
         InitializeComponent();
+        ApplyPinAppearance();     // 2026-11-14 设置窗口"贴图"页：边框颜色/粗细 + 阴影参数
         PinImage.Source = image;
         PreviewMouseWheel += OnWheel;
         KeyDown += OnKeyDown;
@@ -94,6 +95,37 @@ public partial class PinWindow : Window
         // 全图重新解码后指纹对不上，会每钉一次多一份重复卡片
         if (addToShelf)
             global::DeskKit.App.AddImageToShelf(image);
+    }
+
+    /// <summary>2026-11-14 设置窗口"贴图"页：按配置应用边框颜色/粗细与阴影参数。
+    /// 仅在贴图创建时读取——设置改动对之后新开的贴图生效，已打开的保持原样。</summary>
+    private void ApplyPinAppearance()
+    {
+        try
+        {
+            var cfg = global::ShotShelf.AppConfig.Current;
+            try
+            {
+                RootBorder.BorderBrush = new SolidColorBrush(
+                    (Color)ColorConverter.ConvertFromString(cfg.PinBorderColor));
+            }
+            catch { /* 坏色值保留 XAML 默认 */ }
+            RootBorder.BorderThickness = new Thickness(Math.Clamp(cfg.PinBorderThickness, 0, 20));
+            if (cfg.PinShadowEnabled)
+            {
+                RootBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    BlurRadius = Math.Clamp(cfg.PinShadowBlur, 0, 60),
+                    ShadowDepth = Math.Clamp(cfg.PinShadowDepth, 0, 30),
+                    Opacity = Math.Clamp(cfg.PinShadowOpacityPct, 0, 100) / 100.0,
+                };
+            }
+            else
+            {
+                RootBorder.Effect = null;
+            }
+        }
+        catch { /* 配置异常不影响贴图主功能 */ }
     }
 
     /// <summary>Position window using physical px coords of the virtual desktop.</summary>

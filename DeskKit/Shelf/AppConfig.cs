@@ -187,6 +187,32 @@ namespace ShotShelf
         /// <summary>「设备」标签热键：修饰键（默认 Alt）</summary>
         public int HotkeyTab3Mods { get; set; } = 1;
 
+        // ================= 2026-11-14 设置窗口新功能（级联露边/文字字号/贴图边框阴影） =================
+
+        /// <summary>固定卡片级联叠放时被压卡片露出的左缘宽度（px）。原硬编码 13。</summary>
+        public double CascadePeekPx { get; set; } = 13;
+
+        /// <summary>文字卡片正文字号（px）。原硬编码 10.5。</summary>
+        public double TextCardFontSize { get; set; } = 10.5;
+
+        /// <summary>贴图边框颜色（hex）。默认与原硬编码一致 #FF9AA0A6。</summary>
+        public string PinBorderColor { get; set; } = "#FF9AA0A6";
+
+        /// <summary>贴图边框粗细（px，0=无边框）。原硬编码 1。</summary>
+        public double PinBorderThickness { get; set; } = 1;
+
+        /// <summary>是否启用贴图阴影（原恒开）。</summary>
+        public bool PinShadowEnabled { get; set; } = true;
+
+        /// <summary>贴图阴影模糊半径（px）。原硬编码 8。</summary>
+        public double PinShadowBlur { get; set; } = 8;
+
+        /// <summary>贴图阴影偏移深度（px）。原硬编码 2。</summary>
+        public double PinShadowDepth { get; set; } = 2;
+
+        /// <summary>贴图阴影浓度（%，0=透明 100=不透明）。原硬编码 40。</summary>
+        public int PinShadowOpacityPct { get; set; } = 40;
+
         // ================= 读写 =================
 
         /// <summary>

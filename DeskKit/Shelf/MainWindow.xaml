@@ -250,7 +250,7 @@
                             Padding="4,3" ClipToBounds="True"
                             HorizontalAlignment="Center">
                         <TextBlock Text="{Binding TextPreview}"
-                                   FontSize="10.5" LineHeight="14"
+                                   FontSize="{Binding TextFontSize}" LineHeight="{Binding TextLineHeight}"
                                    Foreground="#333333"
                                    TextWrapping="Wrap"/>
                     </Border>

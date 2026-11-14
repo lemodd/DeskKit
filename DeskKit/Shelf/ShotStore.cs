@@ -119,12 +119,39 @@ namespace ShotShelf
         // 布局层用负左边距让后续固定卡压住前一张、只露 13px 左缘（扑克牌式级联），
         // 最近固定的天然成为顶卡。偏移由 ShotStore.SyncOne 按镜像集合实际顺序统一计算。
 
-        /// <summary>固定卡被压时露出的左缘宽度（px）</summary>
-        internal const double CascadePeek = 13;
+        /// <summary>固定卡被压时露出的左缘宽度（px）。2026-11-14 起可设置（设置窗口），默认 13。</summary>
+        internal static double CascadePeek = 13;
 
-        /// <summary>级联偏移量：负左边距 = 8(常规左距) - (槽宽141 - 露边13)</summary>
-        internal static readonly System.Windows.Thickness TuckedMargin = new(-120, 10, 8, 0);
+        /// <summary>槽宽常量（卡片布局槽，参与露边换算）</summary>
+        internal const double CascadeSlotWidth = 141;
+
+        /// <summary>级联偏移量：负左边距 = 8(常规左距) - (槽宽141 - 露边)。设置改变后经 ApplyCascadePeek 重算。
+        /// 2026-11-14 起不再是 readonly。</summary>
+        internal static System.Windows.Thickness TuckedMargin = new(-120, 10, 8, 0);
         internal static readonly System.Windows.Thickness NormalCardMargin = new(8, 10, 8, 0);
+
+        /// <summary>应用新的级联露边宽度（设置窗口调用）：重算被压卡负边距。</summary>
+        internal static void ApplyCascadePeek(double peek)
+        {
+            CascadePeek = peek;
+            TuckedMargin = new System.Windows.Thickness(8 - (CascadeSlotWidth - peek), 10, 8, 0);
+        }
+
+        /// <summary>文字卡片正文字号（2026-11-14 可设置；新卡构造时读配置，改动经 ApplyTextFontSize 广播）。
+        /// 行高跟随字号（约 1.35 倍，原 10.5/14 的比例）。</summary>
+        private double _textFontSize = AppConfig.Current.TextCardFontSize;
+        public double TextFontSize
+        {
+            get => _textFontSize;
+            set
+            {
+                if (Math.Abs(_textFontSize - value) < 0.01) return;
+                _textFontSize = value;
+                OnPropertyChanged(nameof(TextFontSize));
+                OnPropertyChanged(nameof(TextLineHeight));
+            }
+        }
+        public double TextLineHeight => Math.Round(_textFontSize * 14.0 / 10.5, 1);
 
         /// <summary>卡片容器边距：普通 (8,10,8,0)；级联中被压的固定卡 (-120,10,8,0)。
         /// 仅值变化才通知（SyncOne 每次 CollectionChanged 都会跑，防绑定风暴）。</summary>
@@ -284,6 +311,19 @@ namespace ShotShelf
         }
 
         // ================= 两行分区的镜像同步（2026-10-26 十三次更新） =================
+
+        /// <summary>应用新的级联露边宽度（2026-11-14 设置窗口"外观"页）：重算被压卡负边距并刷新布局。</summary>
+        public void ApplyCascadePeek(double peek)
+        {
+            ShotItem.ApplyCascadePeek(peek);
+            SyncViews();   // setter 值短路：露边没变的卡不会触发绑定刷新
+        }
+
+        /// <summary>应用新的文字卡片字号（2026-11-14 设置窗口"外观"页）：广播到全部文本卡。</summary>
+        public void ApplyTextFontSize(double size)
+        {
+            foreach (var s in Shots) s.TextFontSize = size;
+        }
 
         /// <summary>把 Images / Texts 两个镜像集合校准成 Shots 的同序子集</summary>
         private void SyncViews()

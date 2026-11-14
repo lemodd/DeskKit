@@ -35,6 +35,7 @@ namespace ShotShelf
             ["TabDeviceColor"] = Color.FromRgb(0x5C, 0x6B, 0xC0),
             ["ShelfBackgroundColor"] = Color.FromRgb(0xF4, 0xF5, 0xF7),
             ["PreviewBackgroundColor"] = Color.FromRgb(0xEC, 0xED, 0xEF),
+            ["PinBorderColor"] = Color.FromRgb(0x9A, 0xA0, 0xA6),   // 2026-11-14 贴图页
         };
 
         // 贴边页滑块（解构赋值，不能 readonly）
@@ -49,6 +50,10 @@ namespace ShotShelf
         // 外观页：背景跟随标签颜色
         private CheckBox _chkFollow;
         private Slider _sTint;
+        // 2026-11-14 新功能：级联露边 / 文字卡片字号 / 贴图边框阴影
+        private Slider _sCascadePeek, _sTextFont;
+        private Slider _sPinBorder, _sPinShadowBlur, _sPinShadowDepth, _sPinShadowOpacity;
+        private CheckBox _chkPinShadow;
 
         private ShelfSettingsWindow(Window owner, Action onApplied, Action openTransferSettings)
         {
@@ -77,6 +82,7 @@ namespace ShotShelf
                         : key == "ShelfBackgroundColor" ? cfg.ShelfBackgroundColor
                         : key == "TabImageColor" ? cfg.TabImageColor
                         : key == "TabTextColor" ? cfg.TabTextColor
+                        : key == "PinBorderColor" ? cfg.PinBorderColor
                         : cfg.TabDeviceColor);
                     _colors[key] = c ?? DefColors[key];
                 }
@@ -94,6 +100,7 @@ namespace ShotShelf
             tabs.Items.Add(BuildEdgeTab(cfg));
             tabs.Items.Add(BuildStoreTab(cfg));
             tabs.Items.Add(BuildLongTab(cfg));
+            tabs.Items.Add(BuildPinTab(cfg));
             tabs.Items.Add(BuildHotkeyTab(cfg));
             tabs.Items.Add(BuildTransferTab());
             Grid.SetRow(tabs, 0);
@@ -114,6 +121,9 @@ namespace ShotShelf
                 foreach (var key in DefColors.Keys) SetColor(key, DefColors[key]);
                 _chkFollow.IsChecked = false;
                 _sTint.Value = 12;
+                _sCascadePeek.Value = 13; _sTextFont.Value = 10.5;
+                _sPinBorder.Value = 1; _chkPinShadow.IsChecked = true;
+                _sPinShadowBlur.Value = 8; _sPinShadowDepth.Value = 2; _sPinShadowOpacity.Value = 40;
                 _sLongNotches.Value = 2; _sLongDelay.Value = 500;
                 ResetHotkeys();
                 Save();
@@ -153,6 +163,9 @@ namespace ShotShelf
             _sTint = AddSlider(p, "背景深浅度（跟随标签时的浓度）", 0, 100, 5, AppConfig.Current.ShelfBgTintPct, "%");
             _sTint.IsEnabled = AppConfig.Current.ShelfBgFollowTab;
             p.Children.Add(ColorRow("PreviewBackgroundColor", "预览大图背景色"));
+            // 2026-11-14 新增：卡片外观参数
+            _sCascadePeek = AddSlider(p, "固定卡片叠放露边宽度", 4, 40, 1, AppConfig.Current.CascadePeekPx, "px");
+            _sTextFont = AddSlider(p, "文字卡片字号", 8, 16, 0.5, AppConfig.Current.TextCardFontSize, "px");
             return NewTab("外观", p);
         }
 
@@ -325,7 +338,22 @@ namespace ShotShelf
             return NewTab("长截图", p);
         }
 
-        // ================= 页5 快捷键（2026-11-12） =================
+        // ================= 页5 贴图（2026-11-14：边框颜色/粗细 + 阴影） =================
+
+        private TabItem BuildPinTab(AppConfig cfg)
+        {
+            var p = NewPage();
+            p.Children.Add(Note("贴图（钉在屏幕上的图片）的边框与阴影。设置保存后，之后新开的贴图生效，已打开的保持原样。"));
+            p.Children.Add(ColorRow("PinBorderColor", "贴图边框颜色"));
+            _sPinBorder = AddSlider(p, "贴图边框粗细（0=无边框）", 0, 10, 0.5, cfg.PinBorderThickness, "px");
+            _chkPinShadow = AddCheck(p, "启用贴图阴影", cfg.PinShadowEnabled, null);
+            _sPinShadowBlur = AddSlider(p, "阴影模糊半径", 0, 40, 1, cfg.PinShadowBlur, "px");
+            _sPinShadowDepth = AddSlider(p, "阴影偏移（离贴图的距离）", 0, 20, 1, cfg.PinShadowDepth, "px");
+            _sPinShadowOpacity = AddSlider(p, "阴影浓度", 0, 100, 5, cfg.PinShadowOpacityPct, "%");
+            return NewTab("贴图", p);
+        }
+
+        // ================= 页6 快捷键（2026-11-12） =================
 
         private TextBox? _hkCapture, _hkShelf, _hkTab1, _hkTab2, _hkTab3;
         private readonly Dictionary<TextBox, Action<int, uint>> _hkApply = new();
@@ -533,6 +561,15 @@ namespace ShotShelf
             // 长截图
             cfg.LongScrollNotches = (int)_sLongNotches.Value;
             cfg.LongScrollDelayMs = (int)_sLongDelay.Value;
+            // 2026-11-14 新功能
+            cfg.CascadePeekPx = Math.Round(_sCascadePeek.Value);
+            cfg.TextCardFontSize = Math.Round(_sTextFont.Value * 2) / 2.0;   // 0.5 步进防浮点脏值
+            cfg.PinBorderColor = Hex(_colors["PinBorderColor"]);
+            cfg.PinBorderThickness = Math.Round(_sPinBorder.Value * 2) / 2.0;
+            cfg.PinShadowEnabled = _chkPinShadow.IsChecked == true;
+            cfg.PinShadowBlur = Math.Round(_sPinShadowBlur.Value);
+            cfg.PinShadowDepth = Math.Round(_sPinShadowDepth.Value);
+            cfg.PinShadowOpacityPct = (int)_sPinShadowOpacity.Value;
 
             cfg.Save();
             _onApplied();
@@ -615,7 +652,7 @@ namespace ShotShelf
             });
             var val = new TextBlock
             {
-                Text = $"{value:0} {unit}",
+                Text = $"{value:0.#} {unit}",   // 0.#：0.5 步进滑块也能显示小数
                 FontSize = 12,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5)),
@@ -633,7 +670,7 @@ namespace ShotShelf
                 IsSnapToTickEnabled = true,
                 Margin = new Thickness(0, 2, 0, 0),
             };
-            slider.ValueChanged += (_, _) => val.Text = $"{slider.Value:0} {unit}";
+            slider.ValueChanged += (_, _) => val.Text = $"{slider.Value:0.#} {unit}";
             root.Children.Add(slider);
             return slider;
         }
