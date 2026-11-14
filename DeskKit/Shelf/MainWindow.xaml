@@ -46,9 +46,11 @@
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Panel.ZIndex" Value="99"/>
                 </Trigger>
-                <!-- 2026-11-14：滚轮翻页选中的固定卡掀到叠堆最上（布局槽不动，仅抬层级） -->
+                <!-- 2026-11-14：滚轮翻页选中的固定卡掀到叠堆最上（布局槽不动，仅抬层级）。
+                     值必须高于 hover 的 99：滚轮操作时鼠标必然悬停在叠堆上，若只有 10 会被
+                     当前 hover 卡(99)永远压住，出现"只有角标在换、卡片不换"的现象（已实测踩坑） -->
                 <DataTrigger Binding="{Binding PinTop}" Value="True">
-                    <Setter Property="Panel.ZIndex" Value="10"/>
+                    <Setter Property="Panel.ZIndex" Value="100"/>
                 </DataTrigger>
             </Style.Triggers>
             <Setter Property="Template">
