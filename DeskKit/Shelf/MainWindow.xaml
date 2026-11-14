@@ -53,6 +53,8 @@
                     <Setter Property="Panel.ZIndex" Value="100"/>
                 </DataTrigger>
             </Style.Triggers>
+            <!-- 2026-11-14 hover 哪张显示哪张：悬停固定卡即选中（掀到最上），见 OnCardMouseEnter -->
+            <EventSetter Event="MouseEnter" Handler="OnCardMouseEnter"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">

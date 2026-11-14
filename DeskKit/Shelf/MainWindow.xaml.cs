@@ -1934,6 +1934,18 @@ namespace ShotShelf
         /// 滚轮向下 = 往右切换（固定更晚的卡），向上 = 往左；到头即停不循环；该轨道固定数 ≥ 2 才接管，
         /// 否则放行给下面的横向滚动手势。
         /// </summary>
+        /// <summary>2026-11-14 hover 哪张显示哪张：悬停固定卡 = 直接选中（掀到最上）。
+        /// 悬停被埋卡的露边时立即完整露出，而不是只放大还被顶卡压着；
+        /// 非固定卡忽略。离开轨道由 MouseLeave → ResetPinSelection 恢复默认。</summary>
+        private void OnCardMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+        {
+            if (sender is System.Windows.Controls.ListBoxItem lbi &&
+                lbi.DataContext is ShotItem item)
+            {
+                _store.HoverPin(item);
+            }
+        }
+
         private bool TryPinWheel(object sender, MouseWheelEventArgs e)
         {
             if (e.OriginalSource is not DependencyObject d) return false;

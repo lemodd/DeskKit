@@ -546,6 +546,16 @@ namespace ShotShelf
             SyncViews();                                      // 角标/ZIndex 回到自然顶卡
         }
 
+        /// <summary>2026-11-14 用户要求（hover 哪张显示哪张）：鼠标悬停固定卡 = 直接选中它
+        /// （走 PinTop 同一通道，被埋的卡悬停露边时立即掀到最上）。非固定卡/重复进入是 no-op。</summary>
+        public void HoverPin(ShotItem item)
+        {
+            if (!item.Pinned) return;
+            if (ReferenceEquals(_pinTopSel, item)) return;
+            _pinTopSel = item;
+            SyncViews();
+        }
+
         /// <summary>
         /// 新图入库：PNG 编码 →（可选）写盘 → 生成缩略图 → 加入列表 → 超限淘汰
         /// </summary>
