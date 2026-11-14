@@ -1783,13 +1783,16 @@ namespace ShotShelf
             DeleteItem(item);
         }
 
-        /// <summary>删除指定项（卡片按钮调用；固定项拒绝删除）</summary>
+        /// <summary>删除指定项（卡片按钮调用；2026-11-14 用户要求：固定项不再强制先取消固定，
+        /// 改为弹一次确认，确认后直接删除）</summary>
         private void DeleteItem(ShotItem item)
         {
             if (item.Pinned)
             {
-                UpdateStatus($"第 {item.Index} 项已固定，请先取消固定再删除");
-                return;
+                var r = MessageBox.Show(this,
+                    $"第 {item.Index} 项已固定，确定要删除吗？",
+                    "删除固定项", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (r != MessageBoxResult.Yes) return;
             }
 
             _store.Remove(item);
