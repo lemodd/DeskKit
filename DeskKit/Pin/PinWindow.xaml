@@ -52,6 +52,8 @@
                 <Button x:Name="TbMosaic" Content="▦" Style="{StaticResource CapBtn}" Click="TbMosaic_Click" ToolTip="马赛克 (B)"/>
                 <Button x:Name="TbNumber" Content="①" Style="{StaticResource CapBtn}" Click="TbNumber_Click" ToolTip="数字编号：点击图上位置放一个带圈数字，自动 1、2、3… 递增"/>
                 <Button x:Name="TbColor" Content="■" Style="{StaticResource CapBtn}" Foreground="#E0403A" Click="TbColor_Click" ToolTip="颜色"/>
+                <!-- 2026-11-14 吸管取色（用户要求+用户提供图标）：点击进入取色模式，再点贴图取色 (Esc 退出) -->
+                <Button x:Name="TbEye" Style="{StaticResource CapBtn}" Click="TbEye_Click" ToolTip="吸管取色：点击后光标变十字，再点贴图任意位置复制该点颜色 (Esc 取消)"/>
                 <Button x:Name="TbWidth" Content="中" Style="{StaticResource CapBtn}" Click="TbWidth_Click" ToolTip="线宽 (点击切换)"/>
                 <Button x:Name="TbUndo" Content="↶" Style="{StaticResource CapBtn}" Click="TbUndo_Click" ToolTip="撤销 (Ctrl+Z)"/>
                 <Button x:Name="TbRedo" Content="↷" Style="{StaticResource CapBtn}" Click="TbRedo_Click" ToolTip="重做 (Ctrl+Y)"/>

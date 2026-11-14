@@ -522,6 +522,9 @@ public sealed partial class CaptureWindow : Window
         // 2026-11-11 长截图：点后挖洞保持遮罩，状态条选「手动/自动」开始滚动拼接
         // 2026-11-12 图标换成用户提供的 long.svg（四角框选），并加箭头子路径 + stroke 加粗
         TbI(DeskKit.Icons.Long, "长截图：程序自动滚动页面逐段拼接，到底自动完成", StartLongCapture, stroke: 1.1, size: 18);
+        // 2026-11-14 吸管取色（用户要求+用户提供图标）：点击进入取色模式，光标变十字，
+        // 再点截图任意位置采样该点颜色（HEX 入剪贴板 + 小气泡反馈），取完自动退出；Esc/再点按钮取消
+        _pickBtn = TbI(DeskKit.Icons.Eyedropper, "吸管取色：点击后光标变十字，再点截图任意位置复制该点颜色 (Esc 取消)", TogglePickColor, stroke: 0.4);
         TbI(DeskKit.Icons.Pin, "贴图 (P)", () => Finish(pin: true));
         TbI(DeskKit.Icons.Save, "保存到文件 (S)", QuickSave);
         TbI(DeskKit.Icons.Copy, "复制到剪贴板 (Enter/双击)", () => Finish(copy: true));
@@ -719,6 +722,16 @@ public sealed partial class CaptureWindow : Window
         var p = GetPos(e);
         _down = p;
 
+        // 2026-11-14 吸管取色：取色模式点截图任意位置 = 采样该点颜色。
+        // 工具条内点击放行（还要能用按钮退出取色/切其他功能）
+        if (_picking)
+        {
+            if (_phase == Phase.Editing && HitToolBar(p)) return;
+            PickColorAt(p);
+            e.Handled = true;
+            return;
+        }
+
         if (_phase == Phase.Editing && HitToolBar(p)) return;
 
         // 2026-11-12 遮罩内双击 = 复制按钮（tooltip"Enter/双击"承诺的兑现）；
@@ -862,6 +875,14 @@ public sealed partial class CaptureWindow : Window
             return;
         }
 
+        // 2026-11-14 吸管取色模式：Esc 只退出取色，不关窗
+        if (_picking)
+        {
+            StopPick();
+            e.Handled = true;
+            return;
+        }
+
         if (k == Key.Escape) { Close(); return; }
 
         if (_phase == Phase.Selecting)
@@ -986,6 +1007,76 @@ public sealed partial class CaptureWindow : Window
             return Colors.Black;
         int i = y * _pxStride + x * 4;          // BGRA
         return Color.FromRgb(_pxData[i + 2], _pxData[i + 1], _pxData[i]);
+    }
+
+    // ================= 吸管取色（2026-11-14 用户要求+用户提供图标） =================
+
+    private bool _picking;                  // 取色模式：光标十字，下一击采样颜色
+    private Button _pickBtn = null!;        // 工具条上的吸管按钮（选中高亮用）
+    private Border? _pickToast;             // 取色结果小气泡（1.5s 自动消失）
+
+    private void TogglePickColor()
+    {
+        if (!_picking)
+        {
+            _picking = true;
+            Cursor = Cursors.Cross;
+            _pickBtn.Background = new SolidColorBrush(Color.FromArgb(0x44, 0x1E, 0x88, 0xE5));
+            MiniPix.Core.Log.Write("pick color: on");
+        }
+        else StopPick();
+    }
+
+    private void StopPick()
+    {
+        _picking = false;
+        Cursor = Cursors.Arrow;
+        _pickBtn.Background = Brushes.Transparent;
+        if (_pickToast != null) { _root.Children.Remove(_pickToast); _pickToast = null; }
+    }
+
+    /// <summary>采样 dip 处像素（取自冻结截图 _pxData，不受遮罩影响），HEX 复制 + 气泡反馈，取完退出。</summary>
+    private void PickColorAt(Point dip)
+    {
+        var px = DipToPx(dip);
+        var c = SamplePhysical((int)Math.Round(px.X), (int)Math.Round(px.Y));
+        string hex = DeskKit.ColorPick.ToHex(c);
+        try { Clipboard.SetText(hex); } catch { /* 剪贴板被占不崩 */ }
+        MiniPix.Core.Log.Write($"pick color: {hex}");
+        ShowPickToast(dip, c, hex);
+        StopPick();
+    }
+
+    private void ShowPickToast(Point dip, Color c, string hex)
+    {
+        if (_pickToast != null) _root.Children.Remove(_pickToast);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            Width = 12, Height = 12, RadiusX = 2, RadiusY = 2,
+            Fill = new SolidColorBrush(c),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        sp.Children.Add(new TextBlock
+        {
+            Text = hex, FontSize = 11.5, Margin = new Thickness(5, 0, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x38, 0x3F)),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        _pickToast = new Border
+        {
+            Child = sp, Background = Brushes.White,
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 4, 7, 4),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            BorderThickness = new Thickness(1),
+        };
+        _root.Children.Add(_pickToast);
+        Canvas.SetLeft(_pickToast, Math.Clamp(dip.X + 10, 0, Math.Max(0, ActualWidth - 130)));
+        Canvas.SetTop(_pickToast, Math.Clamp(dip.Y - 30, 0, Math.Max(0, ActualHeight - 30)));
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        t.Tick += (_, _) => { if (_pickToast != null) { _root.Children.Remove(_pickToast); _pickToast = null; } t.Stop(); };
+        t.Start();
     }
 
     private void UpdateUi()

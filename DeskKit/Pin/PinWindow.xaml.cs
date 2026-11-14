@@ -162,6 +162,14 @@ public partial class PinWindow : Window
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // 2026-11-14 吸管取色：取色模式点击图片 = 采样该点颜色（HEX 入剪贴板）
+        if (_picking && _annTextBox == null && e.ChangedButton == MouseButton.Left)
+        {
+            PickColorAt(e.GetPosition(AnnCanvas));
+            e.Handled = true;
+            return;
+        }
+
         // 2026-10-30 用户要求：双击贴图直接关闭（注释工具选中时双击是画图，不关）
         if (e.ClickCount == 2 && _annTool == AnnTool.None)
         {
@@ -226,6 +234,8 @@ public partial class PinWindow : Window
         switch (e.Key)
         {
             case Key.Escape:
+                // 2026-11-14 取色模式：Esc 只退出取色，不收工具条/不关贴图
+                if (_picking) { StopPick(); e.Handled = true; break; }
                 // 工具条开着时先收工具条（含退出注释状态），否则关闭贴图
                 if (PinToolBar.Visibility == Visibility.Visible) ToggleToolBar();
                 else Close();
@@ -328,6 +338,8 @@ public partial class PinWindow : Window
         // 2026-11-12 三修：颜色图标放大到 18 + stroke 加粗线宽
         // 2026-11-14 四修：stroke 与截图工具条统一为 0.6
         SetIcon(TbColor, DeskKit.Icons.Palette, stroke: 0.6, size: 18);
+        // 2026-11-14 吸管取色（用户提供图标）
+        SetIcon(TbEye, DeskKit.Icons.Eyedropper, stroke: 0.4);
         // 2026-11-12 用户要求：颜色图标不跟随当前标注颜色（不再变红），固定与其他图标一致的灰色；
         // Foreground 仍记录当前颜色供换色逻辑使用，只解绑图标的 Fill/Stroke
         // 2026-11-14 五修：白色是深底时代遗留，白底上隐形 → 改深灰（与截图工具条 2026-11-12 版一致）
@@ -363,6 +375,83 @@ public partial class PinWindow : Window
             path.SetBinding(System.Windows.Shapes.Path.StrokeProperty,
                 new System.Windows.Data.Binding("Foreground") { Source = b });
         b.Content = path;
+    }
+
+    // ================= 吸管取色（2026-11-14 用户要求+用户提供图标） =================
+
+    private bool _picking;                  // 取色模式：光标十字，下一击采样颜色
+    private Border? _pickToast;             // 取色结果小气泡（1.5s 自动消失）
+
+    private void TbEye_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_picking)
+        {
+            _picking = true;
+            Cursor = Cursors.Cross;
+            TbEye.Background = new SolidColorBrush(Color.FromArgb(0x44, 0x1E, 0x88, 0xE5));
+            global::MiniPix.Core.Log.Write("pin pick color: on");
+        }
+        else StopPick();
+    }
+
+    private void StopPick()
+    {
+        _picking = false;
+        Cursor = Cursors.Arrow;
+        TbEye.ClearValue(BackgroundProperty);
+        if (_pickToast != null && AnnCanvas.Parent is Panel host)
+        { host.Children.Remove(_pickToast); _pickToast = null; }
+    }
+
+    /// <summary>采样贴图上 canvasP 处像素（Stretch=None/缩放都按显示尺寸比例换算），
+    /// HEX 复制 + 气泡反馈，取完自动退出取色模式。</summary>
+    private void PickColorAt(Point canvasP)
+    {
+        if (PinImage.ActualWidth < 1 || PinImage.ActualHeight < 1) return;
+        double rx = _image.PixelWidth / PinImage.ActualWidth;
+        double ry = _image.PixelHeight / PinImage.ActualHeight;
+        int pxX = (int)Math.Floor(canvasP.X * rx), pxY = (int)Math.Floor(canvasP.Y * ry);
+        if (!global::DeskKit.ColorPick.TrySample(_image, pxX, pxY, out var c)) return;
+        string hex = global::DeskKit.ColorPick.ToHex(c);
+        try { Clipboard.SetText(hex); } catch { /* 剪贴板被占不崩 */ }
+        global::MiniPix.Core.Log.Write($"pin pick color: {hex}");
+        ShowPickToast(c, hex);
+        StopPick();
+    }
+
+    private void ShowPickToast(Color c, string hex)
+    {
+        if (AnnCanvas.Parent is not Panel host) return;
+        if (_pickToast != null) host.Children.Remove(_pickToast);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            Width = 12, Height = 12, RadiusX = 2, RadiusY = 2,
+            Fill = new SolidColorBrush(c),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        sp.Children.Add(new TextBlock
+        {
+            Text = hex, FontSize = 11.5, Margin = new Thickness(5, 0, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x38, 0x3F)),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        _pickToast = new Border
+        {
+            Child = sp, Background = Brushes.White,
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(7, 4, 7, 4),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0),
+            IsHitTestVisible = false,
+        };
+        host.Children.Add(_pickToast);
+        var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        t.Tick += (_, _) => { if (_pickToast != null) { host.Children.Remove(_pickToast); _pickToast = null; } t.Stop(); };
+        t.Start();
     }
 
     /// <summary>空格键切换工具条；收起时退出注释状态</summary>

@@ -489,7 +489,9 @@
          MouseLeftButtonDown（空白处拖动窗口，cs 里 OnRootMouseDown 做命中检测）。
          2026-11-02 升级阶段2：x:Name="RootGrid" —— 拖动排序的插入指示线 Adorner
          以它为坐标原点宿主（见 DragFeedback.cs 的 InsertCaretAdorner）。 -->
-    <Grid x:Name="RootGrid" MouseLeftButtonDown="OnRootMouseDown">
+    <Grid x:Name="RootGrid" MouseLeftButtonDown="OnRootMouseDown"
+          PreviewMouseWheel="OnRootPreviewWheel">
+
         <Grid.ContextMenu>
             <!-- 2026-11-12 统一菜单：与托盘右键同一套条目（仅少一条"显示暂存架"） -->
             <ContextMenu Opened="OnWindowMenuOpened">
