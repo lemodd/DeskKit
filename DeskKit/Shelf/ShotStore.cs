@@ -487,16 +487,24 @@ namespace ShotShelf
             }
         }
 
-        /// <summary>2026-11-14 用户要求：滚轮循环切换固定卡——把 item 转到叠堆顶（toTop=true）或底。
+        /// <summary>2026-11-14 用户要求（二改）：滚轮循环切换固定卡——不是移动悬停的那张，
+        /// 而是整个叠堆循环翻页：滚轮向下 = 当前顶卡的下一张（循环）顶上来，
+        /// 向上 = 顶卡下面的前一张顶上来。item 仅用于判定悬停目标和所属轨道。
         /// 借 PinnedAt 排序实现（顶卡 = 组内 PinnedAt 最大），改动经 SavePins 持久化，重启后顺序保留。</summary>
         public void RotatePin(ShotItem item, bool toTop)
         {
             if (!item.Pinned) return;
-            var peers = Shots.Where(s => s.Kind == item.Kind && s.Pinned).ToList();
+            var peers = Shots.Where(s => s.Kind == item.Kind && s.Pinned)
+                             .OrderBy(s => s.PinnedAt)
+                             .ToList();                       // 升序：末位 = 当前顶卡
             if (peers.Count < 2) return;
 
-            if (toTop) item.PinnedAt = peers.Max(s => s.PinnedAt).AddMilliseconds(1);
-            else item.PinnedAt = peers.Min(s => s.PinnedAt).AddMilliseconds(-1);
+            int topIdx = peers.Count - 1;
+            var next = toTop
+                ? peers[(topIdx + 1) % peers.Count]           // 下一张（底卡循环到顶）
+                : peers[(topIdx - 1 + peers.Count) % peers.Count]; // 前一张（顶卡下移）
+
+            next.PinnedAt = peers.Max(s => s.PinnedAt).AddMilliseconds(1);
 
             SortPinnedFirst();
             SavePins();
