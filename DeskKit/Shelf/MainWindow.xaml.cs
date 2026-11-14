@@ -76,6 +76,10 @@ namespace ShotShelf
             LstShots.ItemsSource = _store.Images;
             LstTexts.ItemsSource = _store.Texts;
 
+            // ---- 2026-11-14 滚轮翻页收尾：鼠标离开轨道就把掀开的固定卡恢复成默认顶卡 ----
+            LstShots.MouseLeave += (_, _) => _store.ResetPinSelection();
+            LstTexts.MouseLeave += (_, _) => _store.ResetPinSelection();
+
             // ---- 2026-11-10 文字互发：手机发来的文字直接入"文"标签新建卡片 ----
             // （与剪贴板文字同一入库链路：摘要/落盘/插最前/超限淘汰 + 自动跳到文标签）
             DeskKit.Transfer.TransferService.TextReceived += OnLanTextReceived;

@@ -537,6 +537,15 @@ namespace ShotShelf
         /// <summary>滚轮翻页当前掀开的固定卡（null = 自然顶卡）</summary>
         private ShotItem? _pinTopSel;
 
+        /// <summary>2026-11-14 用户要求：鼠标离开轨道后，掀开的固定卡恢复成默认顶卡（最近固定）。
+        /// 没有翻页选择时是 no-op，不动布局。</summary>
+        public void ResetPinSelection()
+        {
+            if (_pinTopSel == null) return;
+            _pinTopSel = null;
+            SyncViews();                                      // 角标/ZIndex 回到自然顶卡
+        }
+
         /// <summary>
         /// 新图入库：PNG 编码 →（可选）写盘 → 生成缩略图 → 加入列表 → 超限淘汰
         /// </summary>
