@@ -11,7 +11,7 @@ Windows 桌面效率工具箱：**截图贴图 / 剪贴板暂存架 / OCR 识文
 [![runtime](https://img.shields.io/badge/.NET%208-WPF-512BD4?style=flat&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0)
 [![ocr](https://img.shields.io/badge/OCR-本地离线-DB2777?style=flat)](#ocr-识文)
 
-[下载最新版](../../releases/latest) · [功能详解](#功能详解) · [快捷键](#键盘快捷键) · [构建](#从源码构建) · [常见问题](#常见问题)
+[下载最新版](../../releases/latest) · [功能详解](#功能详解) · [快捷键](#键盘快捷键) · [更新日志](CHANGELOG.md) · [构建](#从源码构建) · [常见问题](#常见问题)
 
 </div>
 
