@@ -1927,7 +1927,7 @@ namespace ShotShelf
         /// 所以把滚轮的上下意图翻译成左右移动；本行内容没超出宽度时完全不拦（交回默认）。
         /// </summary>
         /// 2026-11-14 用户要求：鼠标悬停在固定卡片上时，滚轮循环切换级联叠堆顶卡——
-        /// 滚轮向下 = 这张卡转到顶层，向上 = 转到底层；该轨道固定数 ≥ 2 才接管，
+        /// 滚轮向下 = 往右切换（固定更晚的卡），向上 = 往左；到头即停不循环；该轨道固定数 ≥ 2 才接管，
         /// 否则放行给下面的横向滚动手势。
         /// </summary>
         private bool TryPinWheel(object sender, MouseWheelEventArgs e)
@@ -1941,7 +1941,7 @@ namespace ShotShelf
             int pinnedCount = _store.Shots.Count(s => s.Kind == item.Kind && s.Pinned);
             if (pinnedCount < 2) return false;
 
-            _store.RotatePin(item, toTop: e.Delta < 0);
+            _store.RotatePin(item, toRight: e.Delta < 0);
             e.Handled = true;
             return true;
         }

@@ -509,12 +509,12 @@ namespace ShotShelf
             }
         }
 
-        /// <summary>2026-11-14 用户要求（四改·终版）：滚轮翻页切换固定卡——
+        /// <summary>2026-11-14 用户要求（五改）：滚轮翻页切换固定卡——
         /// 叠堆布局完全不动（不重排列表、不挪卡片），只切换"掀开哪一张"：
-        /// 被选中的卡通过容器 Panel.ZIndex=10 抬到最上层完整露出，其余保持原位被压。
-        /// 滚轮向下 = 顶卡下面那张（自然序往前）掀开；向上 = 反向回翻。
+        /// 被选中的卡通过容器 Panel.ZIndex=100 抬到最上层完整露出，其余保持原位被压。
+        /// 滚轮向下 = 往右切换（固定更晚的卡），向上 = 往左；**到头即停不循环**。
         /// item 仅用于判定悬停目标所属轨道。选择不持久化，重启回到自然顶卡（最近固定）。</summary>
-        public void RotatePin(ShotItem item, bool toTop)
+        public void RotatePin(ShotItem item, bool toRight)
         {
             if (!item.Pinned) return;
             var peers = Shots.Where(s => s.Kind == item.Kind && s.Pinned)
@@ -524,12 +524,12 @@ namespace ShotShelf
 
             int sel = _pinTopSel != null && _pinTopSel.Pinned && peers.Contains(_pinTopSel)
                 ? peers.IndexOf(_pinTopSel)
-                : peers.Count - 1;                            // 默认自然顶卡（最近固定）
+                : peers.Count - 1;                            // 默认自然顶卡（最近固定，右端）
 
-            sel = toTop ? sel - 1 : sel + 1;                  // 下=前一张掀开，上=回翻
-            if (sel < 0) sel = peers.Count - 1;               // 循环
-            if (sel >= peers.Count) sel = 0;
-            _pinTopSel = peers[sel];
+            int next = toRight ? sel + 1 : sel - 1;           // 下=右（更新固定），上=左
+            if (next < 0 || next >= peers.Count) return;      // 到头即停，不循环
+            if (next == sel) return;                          // 没动就不刷
+            _pinTopSel = peers[next];
 
             SyncViews();                                      // 只重算 ZIndex/角标，不动布局
         }
