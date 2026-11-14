@@ -1962,7 +1962,23 @@ namespace ShotShelf
             return true;
         }
 
-        private void OnListPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        /// <summary>2026-11-14 用户要求（二改）：按住 Ctrl 时，在暂存架框架内任意位置滚轮 = 上下切换三个标签，
+    /// 下=下一个（图→文→设备），上=上一个；到头即停不循环。
+    /// 不按 Ctrl 时一切照旧：卡片上滚轮走固定卡轮换/横向滚动，空白处滚轮无动作。</summary>
+    private void OnRootPreviewWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((System.Windows.Input.Keyboard.Modifiers & ModifierKeys.Control) == 0) return;   // 不按 Ctrl：放行
+
+        System.Windows.Controls.RadioButton[] tabs = { TabImage, TabText, TabDevices };
+        int cur = Array.FindIndex(tabs, t => t.IsChecked == true);
+        if (cur < 0) return;
+        int next = cur + (e.Delta < 0 ? 1 : -1);          // 下=下一个，上=上一个
+        if (next < 0 || next >= tabs.Length) return;      // 到头即停，不循环
+        tabs[next].IsChecked = true;                      // 触发对应 Checked 处理器切轨道
+        e.Handled = true;
+    }
+
+    private void OnListPreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
             if (TryPinWheel(sender, e)) return; // 固定卡滚轮轮换优先
             if (sender is not ListBox list) return;
