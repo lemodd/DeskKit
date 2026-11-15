@@ -9,12 +9,13 @@ namespace ShotShelf
 {
     /// <summary>
     /// 暂存架设置窗口（2026-11-10 反馈二轮：不能只有贴边参数，加外观/暂存/传输页）。
-    /// 纯代码建窗（TabControl 四页），非模态、单例：ShowOrActivate。
-    /// 页1 外观：图/文/设备标签颜色 + 窗口背景色 + 预览背景色（色块点击弹系统取色器）
+    /// 纯代码建窗（TabControl 七页），非模态、单例：ShowOrActivate。
+    /// 页1 外观：图/文/设备标签颜色 + 窗口背景色 + 预览背景色 + 卡片参数（色块/滑块）
     /// 页2 贴边：留边宽度/检测范围/滑回延时/收起延时/动画时长（滑块）
-    /// 页3 暂存：上限/缩略图尺寸/文本捕获/单条上限/磁盘缓存
-    /// 页4 传输：入口按钮（复用 TransferSettingsWindow）
-    /// 全部存 config.json；保存后经回调实时生效（个别项标注重启生效）。
+    /// 页3 暂存：自动保存目录/上限/缩略图尺寸/文本捕获/单条上限/磁盘缓存
+    /// 页4 长截图：滚动步长/延时；页5 贴图：边框/阴影；页6 快捷键；页7 传输
+    /// 2026-11-15：无保存按钮——任何改动 500ms 防抖后自动保存并实时生效
+    /// （快捷键页自带按下即生效+失败回滚；全部存 config.json）。
     /// </summary>
     public sealed class ShelfSettingsWindow : Window
     {
@@ -59,6 +60,13 @@ namespace ShotShelf
         {
             _onApplied = onApplied;
             _openTransferSettings = openTransferSettings;
+            // 2026-11-15 用户要求：设置不再有"保存"按钮——任何改动自动保存、自动生效。
+            // 500ms 防抖：拖滑块/改颜色时值连续变化，停手后统一落盘一次。
+            _autoSaveTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(500),
+            };
+            _autoSaveTimer.Tick += (_, _) => { _autoSaveTimer.Stop(); Save(); };
             var cfg = AppConfig.Current;
 
             Title = "暂存架设置";
@@ -112,7 +120,7 @@ namespace ShotShelf
                 Margin = new Thickness(0, 10, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            btnRow.Children.Add(PrimaryBtn("保存", (_, _) => Save()));
+            // 2026-11-15：保存按钮已移除——所有改动自动保存自动生效
             btnRow.Children.Add(SecondBtn("恢复默认", (_, _) =>
             {
                 _sPeek.Value = 4; _sDetect.Value = 12; _sLeave.Value = 600; _sSnapIn.Value = 600; _sAnim.Value = 600;
@@ -142,7 +150,21 @@ namespace ShotShelf
             root.Children.Add(_txtMsg);
 
             Content = root;
-            Closed += (_, _) => _wnd = null;
+            Closed += (_, _) =>
+            {
+                _wnd = null;
+                _autoSaveTimer.Stop();     // 关窗后不再自动保存
+            };
+        }
+
+        /// <summary>2026-11-15 自动保存防抖定时器（500ms）。</summary>
+        private readonly System.Windows.Threading.DispatcherTimer _autoSaveTimer;
+
+        /// <summary>任何设置控件变化都进这里：停表重来，停手 500ms 后统一保存生效。</summary>
+        private void ScheduleAutoSave()
+        {
+            _autoSaveTimer.Stop();
+            _autoSaveTimer.Start();
         }
 
         // ================= 页1 外观 =================
@@ -211,6 +233,7 @@ namespace ShotShelf
         {
             _colors[key] = c;
             _swatches[key].Background = new SolidColorBrush(c);
+            ScheduleAutoSave();                               // 2026-11-15 自动保存
         }
 
         // ================= 页2 贴边 =================
@@ -296,6 +319,7 @@ namespace ShotShelf
             };
             maxLenRow.Children.Add(_txtMaxLen);
             p.Children.Add(maxLenRow);
+            _txtMaxLen.TextChanged += (_, _) => ScheduleAutoSave();   // 2026-11-15 自动保存
             _chkDisk = AddCheck(p, "磁盘缓存（重启后暂存不丢的关键，建议开）", cfg.EnableDiskCache, "重启生效");
 
             return NewTab("暂存", p);
@@ -343,7 +367,7 @@ namespace ShotShelf
         private TabItem BuildPinTab(AppConfig cfg)
         {
             var p = NewPage();
-            p.Children.Add(Note("贴图（钉在屏幕上的图片）的边框与阴影。设置保存后，之后新开的贴图生效，已打开的保持原样。"));
+            p.Children.Add(Note("贴图（钉在屏幕上的图片）的边框与阴影。改动自动保存，对所有贴图（含已打开的）立即生效。"));
             p.Children.Add(ColorRow("PinBorderColor", "贴图边框颜色"));
             _sPinBorder = AddSlider(p, "贴图边框粗细（0=无边框）", 0, 10, 0.5, cfg.PinBorderThickness, "px");
             _chkPinShadow = AddCheck(p, "启用贴图阴影", cfg.PinShadowEnabled, null);
@@ -575,7 +599,7 @@ namespace ShotShelf
             // 2026-11-14 晚间修订：贴图边框/阴影对"已经打开的贴图"也立即生效（用户要求）
             global::MiniPix.Pin.PinWindow.ApplyStyleToAll();
             _onApplied();
-            _txtMsg.Text = "已保存并生效";
+            _txtMsg.Text = "已自动保存并生效";
             MiniPix.Core.Log.Write("shelf: settings saved (appearance/edge/store)");
         }
 
@@ -616,7 +640,7 @@ namespace ShotShelf
             TextWrapping = TextWrapping.Wrap,
         };
 
-        private static CheckBox AddCheck(StackPanel p, string label, bool isChecked, string note)
+        private CheckBox AddCheck(StackPanel p, string label, bool isChecked, string note)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var chk = new CheckBox
@@ -626,6 +650,9 @@ namespace ShotShelf
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
             };
+            // 2026-11-15 自动保存：勾选变化即触发（防抖统一落盘）
+            chk.Checked += (_, _) => ScheduleAutoSave();
+            chk.Unchecked += (_, _) => ScheduleAutoSave();
             row.Children.Add(chk);
             if (note != null)
                 row.Children.Add(new TextBlock
@@ -641,7 +668,7 @@ namespace ShotShelf
         }
 
         /// <summary>一行 = 标签 + 右侧当前值；下一行滑块。返回滑块。</summary>
-        private static Slider AddSlider(StackPanel root, string label, double min, double max, double step, double value, string unit)
+        private Slider AddSlider(StackPanel root, string label, double min, double max, double step, double value, string unit)
         {
             var lblRow = new Grid { Margin = new Thickness(0, 8, 0, 0) };
             lblRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -673,26 +700,10 @@ namespace ShotShelf
                 Margin = new Thickness(0, 2, 0, 0),
             };
             slider.ValueChanged += (_, _) => val.Text = $"{slider.Value:0.#} {unit}";
+            // 2026-11-15 自动保存：拖动停手 500ms 后统一落盘生效
+            slider.ValueChanged += (_, _) => ScheduleAutoSave();
             root.Children.Add(slider);
             return slider;
-        }
-
-        private static Button PrimaryBtn(string text, RoutedEventHandler onClick)
-        {
-            var b = new Button
-            {
-                Content = text,
-                Cursor = System.Windows.Input.Cursors.Hand,
-                Focusable = false,
-                Margin = new Thickness(8, 0, 0, 0),
-                Padding = new Thickness(12, 4, 12, 4),
-                FontSize = 11.5,
-                Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
-            };
-            b.Click += onClick;
-            return b;
         }
 
         private static Button SecondBtn(string text, RoutedEventHandler onClick)
