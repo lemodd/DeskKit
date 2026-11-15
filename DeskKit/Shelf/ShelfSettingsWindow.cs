@@ -16,6 +16,7 @@ namespace ShotShelf
     /// 页4 长截图：滚动步长/延时；页5 贴图：边框/阴影；页6 快捷键；页7 传输
     /// 2026-11-15：无保存按钮——任何改动 500ms 防抖后自动保存并实时生效
     /// （快捷键页自带按下即生效+失败回滚；全部存 config.json）。
+    /// 2026-11-15 双列布局：窗口 640×560，各页左右两列（滑块占半宽）、同类项合并，少用滚动条。
     /// </summary>
     public sealed class ShelfSettingsWindow : Window
     {
@@ -70,9 +71,9 @@ namespace ShotShelf
             var cfg = AppConfig.Current;
 
             Title = "暂存架设置";
-            Width = 480;
-            Height = 420;
-            MinHeight = 380;
+            Width = 640;    // 2026-11-15 双列布局：加宽加高，少用滚动条
+            Height = 560;
+            MinHeight = 480;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             Icon = IconFactory.GetWpfIcon();   // 2026-11-12 统一程序图标
             Owner = owner;
@@ -173,21 +174,25 @@ namespace ShotShelf
         {
             var p = NewPage();
             p.Children.Add(Note("点击色块弹出系统取色器；颜色立即存入配置并生效。"));
-            p.Children.Add(ColorRow("TabImageColor", "「图」标签颜色"));
-            p.Children.Add(ColorRow("TabTextColor", "「文」标签颜色"));
-            p.Children.Add(ColorRow("TabDeviceColor", "「设备」标签颜色"));
-            p.Children.Add(ColorRow("ShelfBackgroundColor", "窗口背景色"));
-            _chkFollow = AddCheck(p, "背景跟随标签颜色（切图/文/设备跟着换）",
+            // 2026-11-15 双列：左=标签色+背景跟随，右=背景色+卡片参数
+            var left = new StackPanel();
+            var right = new StackPanel();
+            left.Children.Add(ColorRow("TabImageColor", "「图」标签颜色"));
+            left.Children.Add(ColorRow("TabTextColor", "「文」标签颜色"));
+            left.Children.Add(ColorRow("TabDeviceColor", "「设备」标签颜色"));
+            left.Children.Add(ColorRow("ShelfBackgroundColor", "窗口背景色"));
+            _chkFollow = AddCheck(left, "背景跟随标签颜色（切图/文/设备跟着换）",
                 AppConfig.Current.ShelfBgFollowTab, null);
             _chkFollow.Checked += (_, _) => { _swatches["ShelfBackgroundColor"].IsEnabled = false; _sTint.IsEnabled = true; };
             _chkFollow.Unchecked += (_, _) => { _swatches["ShelfBackgroundColor"].IsEnabled = true; _sTint.IsEnabled = false; };
             if (AppConfig.Current.ShelfBgFollowTab) _swatches["ShelfBackgroundColor"].IsEnabled = false; // 初始状态
-            _sTint = AddSlider(p, "背景深浅度（跟随标签时的浓度）", 0, 100, 5, AppConfig.Current.ShelfBgTintPct, "%");
+            _sTint = AddSlider(left, "背景深浅度", 0, 100, 5, AppConfig.Current.ShelfBgTintPct, "%");
             _sTint.IsEnabled = AppConfig.Current.ShelfBgFollowTab;
-            p.Children.Add(ColorRow("PreviewBackgroundColor", "预览大图背景色"));
+            right.Children.Add(ColorRow("PreviewBackgroundColor", "预览大图背景色"));
             // 2026-11-14 新增：卡片外观参数
-            _sCascadePeek = AddSlider(p, "固定卡片叠放露边宽度", 4, 40, 1, AppConfig.Current.CascadePeekPx, "px");
-            _sTextFont = AddSlider(p, "文字卡片字号", 8, 16, 0.5, AppConfig.Current.TextCardFontSize, "px");
+            _sCascadePeek = AddSlider(right, "固定卡片叠放露边宽度", 4, 40, 1, AppConfig.Current.CascadePeekPx, "px");
+            _sTextFont = AddSlider(right, "文字卡片字号", 8, 16, 0.5, AppConfig.Current.TextCardFontSize, "px");
+            p.Children.Add(TwoCols(left, right));
             return NewTab("外观", p);
         }
 
@@ -241,12 +246,16 @@ namespace ShotShelf
         private TabItem BuildEdgeTab(AppConfig cfg)
         {
             var p = NewPage();
-            p.Children.Add(Note("拖到屏幕边缘松手贴边、自动收起只留小边——这些参数控制整个流程。"));
-            _sPeek = AddSlider(p, "留边宽度（收起后露出的小边）", 2, 12, 1, cfg.PeekThickness, "px");
-            _sDetect = AddSlider(p, "贴边检测范围（松手时离边缘多近算贴上）", 6, 30, 1, cfg.SnapDetectPx, "px");
-            _sLeave = AddSlider(p, "鼠标离开后滑回延时", 200, 2000, 50, cfg.LeaveHideDelayMs, "ms");
-            _sSnapIn = AddSlider(p, "贴边后自动收起延时", 200, 2000, 50, cfg.SnapInDelayMs, "ms");
-            _sAnim = AddSlider(p, "滑出/滑回动画时长", 100, 1000, 20, cfg.AnimMs, "ms");
+            p.Children.Add(Note("拖到屏幕边缘松手贴边、自动收起只留小边——这些参数控制整个流程。\n检测范围=松手时离边缘多近算贴上；收起延时=贴边后自动收起前等多久。"));
+            // 2026-11-15 双列：滑块各占一半宽，不再占整行
+            var left = new StackPanel();
+            var right = new StackPanel();
+            _sPeek = AddSlider(left, "留边宽度", 2, 12, 1, cfg.PeekThickness, "px");
+            _sDetect = AddSlider(left, "贴边检测范围", 6, 30, 1, cfg.SnapDetectPx, "px");
+            _sAnim = AddSlider(left, "滑出/滑回动画时长", 100, 1000, 20, cfg.AnimMs, "ms");
+            _sLeave = AddSlider(right, "滑回延时", 200, 2000, 50, cfg.LeaveHideDelayMs, "ms");
+            _sSnapIn = AddSlider(right, "收起延时", 200, 2000, 50, cfg.SnapInDelayMs, "ms");
+            p.Children.Add(TwoCols(left, right));
             return NewTab("贴边", p);
         }
 
@@ -269,7 +278,7 @@ namespace ShotShelf
             {
                 Text = string.IsNullOrWhiteSpace(cfg.AutoSaveDir) ? "未设置（截图不自动落盘）" : cfg.AutoSaveDir,
                 FontSize = 11,
-                MaxWidth = 200,
+                MaxWidth = 260,   // 2026-11-15 窗口加宽后目录能显示更多
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(10, 0, 0, 0),
@@ -278,8 +287,7 @@ namespace ShotShelf
             };
             dirRow.Children.Add(_txtSaveDir);
             p.Children.Add(dirRow);
-            var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-            btnRow.Children.Add(SecondBtn("更改目录…", (_, _) => PickAutoSaveDir()));
+            var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };            btnRow.Children.Add(SecondBtn("更改目录…", (_, _) => PickAutoSaveDir()));
             btnRow.Children.Add(SecondBtn("打开目录", (_, _) =>
             {
                 var dir = AppConfig.Current.AutoSaveDir;
@@ -298,14 +306,16 @@ namespace ShotShelf
             p.Children.Add(btnRow);
             p.Children.Add(Note("设置后每张截图/文字都自动另存一份到这里（按时间命名，永不自动删除）。"));
 
-            _sMaxShots = AddSlider(p, "暂存上限（超出自动淘汰最旧未固定项）", 10, 500, 10, cfg.MaxShots, "条");
-            _sThumb = AddSlider(p, "缩略图最长边（新入库的图生效）", 96, 320, 8, cfg.ThumbSize, "px");
-            _chkText = AddCheck(p, "捕获剪贴板文字（关掉后只暂存图片）", cfg.EnableTextCapture, "重启生效");
+            // 2026-11-15 双列：左=容量与文字捕获，右=缩略图与缓存
+            var colL = new StackPanel();
+            var colR = new StackPanel();
+            _sMaxShots = AddSlider(colL, "暂存上限", 10, 500, 10, cfg.MaxShots, "条");
+            _chkText = AddCheck(colL, "捕获剪贴板文字（关掉后只暂存图片）", cfg.EnableTextCapture, "重启生效");
             var maxLenRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
             maxLenRow.Children.Add(new TextBlock
             {
                 Text = "单条文字上限（字符）",
-                Width = 170,
+                Width = 128,
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
@@ -318,9 +328,11 @@ namespace ShotShelf
                 VerticalContentAlignment = VerticalAlignment.Center,
             };
             maxLenRow.Children.Add(_txtMaxLen);
-            p.Children.Add(maxLenRow);
             _txtMaxLen.TextChanged += (_, _) => ScheduleAutoSave();   // 2026-11-15 自动保存
-            _chkDisk = AddCheck(p, "磁盘缓存（重启后暂存不丢的关键，建议开）", cfg.EnableDiskCache, "重启生效");
+            colL.Children.Add(maxLenRow);
+            _sThumb = AddSlider(colR, "缩略图最长边", 96, 320, 8, cfg.ThumbSize, "px");
+            _chkDisk = AddCheck(colR, "磁盘缓存（重启后暂存不丢的关键，建议开）", cfg.EnableDiskCache, "重启生效");
+            p.Children.Add(TwoCols(colL, colR));
 
             return NewTab("暂存", p);
         }
@@ -357,8 +369,12 @@ namespace ShotShelf
         {
             var p = NewPage();
             p.Children.Add(Note("长截图（框选后自动/手动滚动拼接）的滚动节奏。\n步长小+延时长 = 慢而稳，拼接重叠充足；步长大+延时短 = 快。"));
-            _sLongNotches = AddSlider(p, "每步滚动量（滚轮刻度，1 刻度 ≈120px）", 1, 10, 1, cfg.LongScrollNotches, "刻度");
-            _sLongDelay = AddSlider(p, "每步等待时间（等页面渲染稳定）", 200, 1500, 50, cfg.LongScrollDelayMs, "ms");
+            // 2026-11-15 双列：两个滑块并排
+            var left = new StackPanel();
+            var right = new StackPanel();
+            _sLongNotches = AddSlider(left, "每步滚动量", 1, 10, 1, cfg.LongScrollNotches, "刻度");
+            _sLongDelay = AddSlider(right, "每步等待时间", 200, 1500, 50, cfg.LongScrollDelayMs, "ms");
+            p.Children.Add(TwoCols(left, right));
             return NewTab("长截图", p);
         }
 
@@ -368,12 +384,16 @@ namespace ShotShelf
         {
             var p = NewPage();
             p.Children.Add(Note("贴图（钉在屏幕上的图片）的边框与阴影。改动自动保存，对所有贴图（含已打开的）立即生效。"));
-            p.Children.Add(ColorRow("PinBorderColor", "贴图边框颜色"));
-            _sPinBorder = AddSlider(p, "贴图边框粗细（0=无边框）", 0, 10, 0.5, cfg.PinBorderThickness, "px");
-            _chkPinShadow = AddCheck(p, "启用贴图阴影", cfg.PinShadowEnabled, null);
-            _sPinShadowBlur = AddSlider(p, "阴影模糊半径", 0, 40, 1, cfg.PinShadowBlur, "px");
-            _sPinShadowDepth = AddSlider(p, "阴影偏移（离贴图的距离）", 0, 20, 1, cfg.PinShadowDepth, "px");
-            _sPinShadowOpacity = AddSlider(p, "阴影浓度", 0, 100, 5, cfg.PinShadowOpacityPct, "%");
+            // 2026-11-15 双列：左=边框，右=阴影（同类项合并）
+            var left = new StackPanel();
+            var right = new StackPanel();
+            left.Children.Add(ColorRow("PinBorderColor", "贴图边框颜色"));
+            _sPinBorder = AddSlider(left, "贴图边框粗细", 0, 10, 0.5, cfg.PinBorderThickness, "px");
+            _chkPinShadow = AddCheck(left, "启用贴图阴影", cfg.PinShadowEnabled, null);
+            _sPinShadowBlur = AddSlider(right, "阴影模糊半径", 0, 40, 1, cfg.PinShadowBlur, "px");
+            _sPinShadowDepth = AddSlider(right, "阴影偏移", 0, 20, 1, cfg.PinShadowDepth, "px");
+            _sPinShadowOpacity = AddSlider(right, "阴影浓度", 0, 100, 5, cfg.PinShadowOpacityPct, "%");
+            p.Children.Add(TwoCols(left, right));
             return NewTab("贴图", p);
         }
 
@@ -621,6 +641,21 @@ namespace ShotShelf
 
         private static StackPanel NewPage() => new() { Margin = new Thickness(14, 10, 14, 10) };
 
+        /// <summary>2026-11-15 双列布局：左右两个半宽列（滑块自然占一半宽度，不用滚动条就能放下更多行）。</summary>
+        private static Grid TwoCols(StackPanel left, StackPanel right)
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            left.Margin = new Thickness(0, 4, 12, 0);
+            right.Margin = new Thickness(12, 4, 0, 0);
+            Grid.SetColumn(left, 0);
+            Grid.SetColumn(right, 1);
+            g.Children.Add(left);
+            g.Children.Add(right);
+            return g;
+        }
+
         private static TabItem NewTab(string header, UIElement content) => new()
         {
             Header = header,
@@ -677,6 +712,7 @@ namespace ShotShelf
             {
                 Text = label,
                 FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,   // 2026-11-15 半宽列里长标签折行不溢出
                 Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
             });
             var val = new TextBlock
