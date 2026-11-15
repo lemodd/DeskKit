@@ -465,7 +465,14 @@ namespace DeskKit
                 return;
             }
             var p = System.Windows.Forms.Cursor.Position;
-            MiniPix.Pin.PinWindow.Show(img, new Point(p.X, p.Y));
+            // 2026-11-15：贴图以光标为中心（与拖出暂存架的便签落位统一；
+            // PinWindow.Show 的点是"图片内容左上角"，传"光标 - 半尺寸"即可居中）
+            var mon = MiniPix.Core.MonitorManager.AtPoint(p.X, p.Y);
+            var dpiX = img.DpiX > 0 ? img.DpiX : 96;
+            var dpiY = img.DpiY > 0 ? img.DpiY : 96;
+            var halfPxX = img.PixelWidth * 96.0 / dpiX * mon.ScaleX / 2;
+            var halfPxY = img.PixelHeight * 96.0 / dpiY * mon.ScaleY / 2;
+            MiniPix.Pin.PinWindow.Show(img, new Point(p.X - halfPxX, p.Y - halfPxY));
         }
 
         // ================= QuickG（源 CtrlG） =================
