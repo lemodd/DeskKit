@@ -2263,8 +2263,11 @@ namespace ShotShelf
                 //（RootGrid 与装饰层同原点：都在窗口客户区左上角，坐标可直接互换）
                 _dragFeedback.MoveGhost(Mouse.GetPosition(RootGrid));
 
-                // 2026-11-15: 预创建"拖出暂存架"用的悬浮幽灵（Adorner 出不了窗口）
+                // 2026-11-15: 预创建"拖出暂存架"用的悬浮幽灵（Adorner 出不了窗口），
+                // 并立刻在屏幕外预显示——OLE 拖拽是模态消息循环，循环中途 Show() 新窗口
+                // 不可靠（实测架外幽灵从未出现）；先 Show 停屏幕外、架外只移位置最稳。
                 EnsureOutGhost(item);
+                PreShowOutGhost();
 
                 // 源卡片弱化，视觉上表示"这张正被搬走"
                 if (list.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem container)
@@ -2416,19 +2419,41 @@ namespace ShotShelf
             };
         }
 
-        /// <summary>架外幽灵跟随光标（物理像素 → 所在屏 DIP，换算同 PinWindow.PlacePhysical）。</summary>
+        /// <summary>拖拽开始前先把幽灵窗显示出来（停在屏幕外）。
+        /// OLE 拖拽是模态消息循环，循环中途 Show() 新窗口不可靠；先 Show、后移动最稳。</summary>
+        private void PreShowOutGhost()
+        {
+            if (_outGhost == null || _outGhost.IsVisible) return;
+            _outGhost.Left = -30000; _outGhost.Top = 0;   // 先停屏幕外，架外才移回光标处
+            _outGhost.Show();                              // ShowActivated=false，不抢焦点
+            _outGhost.UpdateLayout();                      // 量出 ActualWidth/Height 供居中
+            MiniPix.Core.Log.Write($"shelf: outghost pre-shown size={_outGhost.ActualWidth:0}x{_outGhost.ActualHeight:0}");
+        }
+
+        /// <summary>架外幽灵跟随光标（物理像素 → 所在屏 DIP，换算同 PinWindow.PlacePhysical）。
+        /// 2026-11-15 二次修复：以光标为中心（与窗内幽灵一致），不再挂在光标右下角。</summary>
         private void MoveOutGhost(System.Drawing.Point px)
         {
             if (_outGhost == null) return;
             var mon = MiniPix.Core.MonitorManager.AtPoint(px.X, px.Y);
-            _outGhost.Left = mon.Int32Rect.X + (px.X - mon.Int32Rect.X) / mon.ScaleX + 14;
-            _outGhost.Top = mon.Int32Rect.Y + (px.Y - mon.Int32Rect.Y) / mon.ScaleY + 14;
-            if (!_outGhost.IsVisible) _outGhost.Show();
+            var x = mon.Int32Rect.X + (px.X - mon.Int32Rect.X) / mon.ScaleX;
+            var y = mon.Int32Rect.Y + (px.Y - mon.Int32Rect.Y) / mon.ScaleY;
+
+            // 幽灵窗未量出尺寸时用预估兜底（112 图 + 10 padding + 1 边框，加提示条）
+            var w = _outGhost.ActualWidth >= 10 ? _outGhost.ActualWidth : 122;
+            var h = _outGhost.ActualHeight >= 10 ? _outGhost.ActualHeight : 120;
+            _outGhost.Left = x - w / 2;
+            _outGhost.Top = y - h / 2;
+            if (!_outGhost.IsVisible) PreShowOutGhost();
         }
 
         private void HideOutGhost()
         {
-            if (_outGhost != null && _outGhost.IsVisible) _outGhost.Hide();
+            if (_outGhost != null && _outGhost.IsVisible)
+            {
+                // 不用 Hide()：模态拖拽循环里再 Show 不可靠，直接停回屏幕外
+                _outGhost.Left = -30000; _outGhost.Top = 0;
+            }
         }
 
         private void CloseOutGhost()
