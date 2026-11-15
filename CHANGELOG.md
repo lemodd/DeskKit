@@ -7,6 +7,8 @@
 
 ### 修复
 
+- **拖出松手后的贴图改为以光标为中心落位**：原先贴图左上角挂在光标处，
+  现按图片实际尺寸（含 DPI/多屏缩放换算）让图片中心正好落在松手点上
 - **拖拽幽灵卡片完全不显示（含架内排序）**：`DragFeedbackAdorner` 构造函数先设置
   `IsHitTestVisible` 后创建 `VisualCollection`，属性变更触发 WPF 枚举视觉子级时
   `VisualChildrenCount` 读到 null → NullReferenceException 被静默吞掉，幽灵自某次

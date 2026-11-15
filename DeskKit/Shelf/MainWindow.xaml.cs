@@ -2491,8 +2491,16 @@ namespace ShotShelf
                         UpdateStatus("图片缓存丢失，无法生成贴图便签");
                         return;
                     }
+
+                    // 2026-11-15：贴图以光标为中心（PinWindow.Show 的点是"图片内容左上角"，
+                    // 传"光标 - 图片物理尺寸一半"即可居中；DIP→物理按所在屏缩放换算）
+                    var mon = MiniPix.Core.MonitorManager.AtPoint(px.X, px.Y);
+                    var dpiX = img.DpiX > 0 ? img.DpiX : 96;
+                    var dpiY = img.DpiY > 0 ? img.DpiY : 96;
+                    var halfPxX = img.PixelWidth * 96.0 / dpiX * mon.ScaleX / 2;
+                    var halfPxY = img.PixelHeight * 96.0 / dpiY * mon.ScaleY / 2;
                     MiniPix.Pin.PinWindow.Show(
-                        img, new System.Windows.Point(px.X + 10, px.Y + 10), addToShelf: false);
+                        img, new System.Windows.Point(px.X - halfPxX, px.Y - halfPxY), addToShelf: false);
                     UpdateStatus("已贴成图片便签");
                 }
             }
