@@ -23,8 +23,8 @@ namespace ShotShelf
         private ClipboardWatcher? _watcher;
         private readonly ShotStore _store = new();
 
-        // 2026-11-14：图片卡片 → 贴图 的存活窗口登记（同一卡片重复点击=激活已有贴图，不再多钉）
-        private readonly System.Collections.Generic.Dictionary<ShotItem, MiniPix.Pin.PinWindow> _itemPins = new();
+        // 2026-11-15：点击卡片恢复为预览窗，不再经此处转贴图（贴图/便签改为"拖出暂存架"生成），
+        // 原"卡片→贴图"登记表 _itemPins 随之移除
         private bool _realExit = false; // S6: 区分"最小化到托盘"与真正退出（托盘菜单退出时置 true）
         // DeskKit 合并改动：原 TrayIcon 字段删除 —— 托盘由 DeskKit 统一管理（KitTray）
         private readonly AppConfig _config;
@@ -36,6 +36,15 @@ namespace ShotShelf
         public MainWindow()
         {
             InitializeComponent();
+
+            // ---- 2026-11-15 新功能：拖拽出暂存架 = 变便签 ----
+            // GiveFeedback / QueryContinueDrag 全程在拖拽源上触发，挂在两条轨道上；
+            // GiveFeedback 里负责"架外悬浮幽灵 + 自定义光标"，QueryContinue 里记 Esc 取消
+            foreach (var l in new[] { LstShots, LstTexts })
+            {
+                DragDrop.AddGiveFeedbackHandler(l, OnListGiveFeedback);
+                DragDrop.AddQueryContinueDragHandler(l, OnListQueryContinueDrag);
+            }
 
             // ---- 右键菜单图标（2026-11-12）：矢量 SVG 路径（源 D:\DeskKit\assests）----
             SetMenuIcon(MenuCapture, "capture");
@@ -1869,30 +1878,9 @@ namespace ShotShelf
 
             if (sender is not ListBox list || list.SelectedItem is not ShotItem item) return;
 
-            // 2026-11-14 用户要求：图片卡片单击不进预览窗，直接转贴图（与 Ctrl+Alt+V 同一条路）。
-            // 全图取不到（缓存文件丢失）时回退预览窗兜底；文字卡片仍走预览窗（全选复制有用）。
-            // 同一张卡片已有贴图时 → 激活置前而不是再钉一张；贴图不回写暂存架（图本来就在）。
-            if (!item.IsText)
-            {
-                var img = _store.GetFullImage(item);
-                if (img != null)
-                {
-                    if (_itemPins.TryGetValue(item, out var existing) && existing.IsLoaded)
-                    {
-                        existing.Activate();
-                    }
-                    else
-                    {
-                        var p = System.Windows.Forms.Cursor.Position;
-                        var pin = MiniPix.Pin.PinWindow.Show(
-                            img, new System.Windows.Point(p.X, p.Y), addToShelf: false);
-                        pin.Closed += (_, _) => _itemPins.Remove(item);
-                        _itemPins[item] = pin;
-                    }
-                    return;
-                }
-            }
-
+            // 2026-11-15 用户要求：点击恢复为预览窗（图片/文字都进预览）；
+            // 2026-11-14 曾把图片单击改成直接转贴图，现在贴图/便签统一改为"拖出暂存架"生成，
+            // 点击回归预览（图片可缩放，文字可全选复制）。
             var preview = new PreviewWindow(item, _store, _config) { Owner = this };
             preview.Show();
         }
@@ -2166,6 +2154,11 @@ namespace ShotShelf
         private bool _pressedOnButton; // 九次更新: 按下点是否在按钮上（是则禁止拖拽，避免抢点击）
         private bool _dragHappened;    // 2026-11-01: 本次按下后是否真发生过拖拽（单击预览用它排除拖拽手势）
 
+        // ---- 2026-11-15 新功能：拖拽出暂存架 = 变便签；拖到固定堆 = 固定 ----
+        private bool _dropHandled;     // 本次 OLE 拖拽是否已被窗口内目标处理（排序/固定），否则松手在架外 = 生成便签
+        private bool _dragCancelled;   // 拖拽中按了 Esc（取消，不生成便签）
+        private Window? _outGhost;     // 拖出暂存架时跟随鼠标的悬浮幽灵（Adorner 出不了窗口，用独立无边框窗）
+
         private DragFeedbackAdorner? _dragFeedback;                       // 幽灵+插入蓝线组合 Adorner（2026-11-02 二次修复）
         private System.Windows.Documents.AdornerLayer? _adornerLayer;      // 反馈 Adorner 所在的装饰层
         private ListBoxItem? _sourceContainer;                             // 被拖动的源卡片容器
@@ -2177,6 +2170,8 @@ namespace ShotShelf
             _dragStartPoint = e.GetPosition(null);
             _isDragging = false;
             _dragHappened = false; // 2026-11-01: 新手势开始，重置拖拽标记
+            _dropHandled = false;  // 2026-11-15: 新拖拽手势，重置"已被窗口内处理"标记
+            _dragCancelled = false;
 
             // 九次更新: 判断按下点是否落在卡片内的按钮（📌/💾/📋/🗑）上。
             // 若是，本次手势只当点击处理，绝不启动拖拽——否则轻微手抖会吞掉 Click 事件。
@@ -2215,6 +2210,8 @@ namespace ShotShelf
 
             _isDragging = true;
             _dragHappened = true; // 2026-11-01: 标记本次手势发生过拖拽，松开时不再当单击处理
+            _dropHandled = false;
+            _dragCancelled = false;
             try
             {
                 StartDragGhost(list, dragged); // 十一次更新: 拎起幽灵卡片
@@ -2225,8 +2222,21 @@ namespace ShotShelf
             finally
             {
                 EndDragGhost(); // 十一次更新: 收拾幽灵与插入线
+                CloseOutGhost(); // 2026-11-15: 收掉架外悬浮幽灵
+                Mouse.OverrideCursor = null;  // 2026-11-15: 还原架外自定义光标
                 _isDragging = false;
                 _pressedOnButton = false;
+
+                // 2026-11-15 新功能：松手在两条轨道之外（桌面/别的窗口）且没被窗口内目标处理、
+                // 也没按 Esc 取消 → 就地生成便签：图片=贴图（PinWindow），文字=文字便签（TextNoteWindow）
+                if (!_dropHandled && !_dragCancelled)
+                {
+                    var p = System.Windows.Forms.Cursor.Position;
+                    if (!IsPointOverLists(p))
+                        CreateStickyFromDrag(dragged, p);
+                }
+                _dropHandled = false;
+                _dragCancelled = false;
             }
         }
 
@@ -2252,6 +2262,9 @@ namespace ShotShelf
                 // 立刻摆到鼠标位置，避免第一帧从窗口左上角"飞"过来
                 //（RootGrid 与装饰层同原点：都在窗口客户区左上角，坐标可直接互换）
                 _dragFeedback.MoveGhost(Mouse.GetPosition(RootGrid));
+
+                // 2026-11-15: 预创建"拖出暂存架"用的悬浮幽灵（Adorner 出不了窗口）
+                EnsureOutGhost(item);
 
                 // 源卡片弱化，视觉上表示"这张正被搬走"
                 if (list.ItemContainerGenerator.ContainerFromItem(item) is ListBoxItem container)
@@ -2289,7 +2302,178 @@ namespace ShotShelf
             catch { }
         }
 
-        /// <summary>拖动经过列表：更新幽灵位置 + 计算插入指示线</summary>
+        // ================= 2026-11-15 新功能：拖出暂存架 = 变便签 =================
+
+        /// <summary>拖拽全程反馈：架外显示悬浮幽灵 + 全局替换光标（盖掉桌面上的 🚫），架内恢复默认。</summary>
+        private void OnListGiveFeedback(object sender, GiveFeedbackEventArgs e)
+        {
+            if (!_isDragging) return;
+            var p = System.Windows.Forms.Cursor.Position;
+            if (IsPointOverLists(p))
+            {
+                HideOutGhost();
+                Mouse.OverrideCursor = null;    // 架内：默认光标 + 窗口内插入线/固定堆提示照常
+                e.UseDefaultCursors = true;
+                return;
+            }
+
+            // 架外：悬浮幽灵跟随 + 自定义光标
+            MoveOutGhost(p);
+            Mouse.OverrideCursor = System.Windows.Input.Cursors.SizeAll;
+            e.UseDefaultCursors = false;
+            e.Handled = true;
+        }
+
+        /// <summary>拖拽中按 Esc = 取消（不生成便签）。</summary>
+        private void OnListQueryContinueDrag(object sender, QueryContinueDragEventArgs e)
+        {
+            if (e.EscapePressed) _dragCancelled = true;
+        }
+
+        /// <summary>光标（物理像素）是否在两条轨道列表范围内。</summary>
+        private bool IsPointOverLists(System.Drawing.Point px)
+        {
+            foreach (var list in new[] { LstShots, LstTexts })
+            {
+                if (list.Visibility != Visibility.Visible || list.ActualWidth < 4) continue;
+                var tl = list.PointToScreen(new System.Windows.Point(0, 0));
+                var br = list.PointToScreen(new System.Windows.Point(list.ActualWidth, list.ActualHeight));
+                if (px.X >= tl.X && px.X <= br.X && px.Y >= tl.Y && px.Y <= br.Y) return true;
+            }
+            return false;
+        }
+
+        /// <summary>预创建架外悬浮幽灵（独立无边框窗——Adorner 出不了主窗口）。</summary>
+        private void EnsureOutGhost(ShotItem item)
+        {
+            if (_outGhost != null) return;
+            UIElement content;
+            if (!item.IsText && item.Thumbnail != null)
+            {
+                content = new System.Windows.Controls.Image
+                {
+                    Source = item.Thumbnail,
+                    Width = 112,
+                    Height = 88,
+                    Stretch = Stretch.Uniform,
+                };
+            }
+            else
+            {
+                content = new TextBlock
+                {
+                    Text = item.TextPreview,
+                    FontSize = 9,
+                    LineHeight = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3A)),
+                    MaxHeight = 70,
+                };
+            }
+
+            var body = new Border
+            {
+                Background = item.IsText
+                    ? new SolidColorBrush(Color.FromRgb(0xFF, 0xF6, 0xA8))   // 文字 = 便签黄
+                    : new SolidColorBrush(Color.FromRgb(0xFB, 0xFB, 0xF8)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xBC)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5),
+                Child = content,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    BlurRadius = 12,
+                    ShadowDepth = 2,
+                    Opacity = 0.35,
+                },
+            };
+            var panel = new StackPanel();
+            panel.Children.Add(body);
+            panel.Children.Add(new TextBlock
+            {
+                Text = "松手 → 贴成便签",
+                FontSize = 10,
+                Foreground = Brushes.White,
+                Background = new SolidColorBrush(Color.FromArgb(0xB0, 0x30, 0x30, 0x30)),
+                Padding = new Thickness(4, 1, 4, 1),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(2, 2, 0, 0),
+            });
+
+            _outGhost = new Window
+            {
+                AllowsTransparency = true,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                IsHitTestVisible = false,   // 幽灵绝不参与命中/落点判定
+                Background = Brushes.Transparent,
+                Topmost = true,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                Content = panel,
+                Opacity = 0.92,
+            };
+        }
+
+        /// <summary>架外幽灵跟随光标（物理像素 → 所在屏 DIP，换算同 PinWindow.PlacePhysical）。</summary>
+        private void MoveOutGhost(System.Drawing.Point px)
+        {
+            if (_outGhost == null) return;
+            var mon = MiniPix.Core.MonitorManager.AtPoint(px.X, px.Y);
+            _outGhost.Left = mon.Int32Rect.X + (px.X - mon.Int32Rect.X) / mon.ScaleX + 14;
+            _outGhost.Top = mon.Int32Rect.Y + (px.Y - mon.Int32Rect.Y) / mon.ScaleY + 14;
+            if (!_outGhost.IsVisible) _outGhost.Show();
+        }
+
+        private void HideOutGhost()
+        {
+            if (_outGhost != null && _outGhost.IsVisible) _outGhost.Hide();
+        }
+
+        private void CloseOutGhost()
+        {
+            HideOutGhost();
+            _outGhost?.Close();
+            _outGhost = null;
+        }
+
+        /// <summary>架外松手：图片 → 贴图（PinWindow，光标处）；文字 → 文字便签（TextNoteWindow）。
+        /// 均不回写暂存架（卡片本来就在架上）。</summary>
+        private void CreateStickyFromDrag(ShotItem item, System.Drawing.Point px)
+        {
+            try
+            {
+                if (item.IsText)
+                {
+                    var text = _store.GetText(item) ?? item.Text ?? "";
+                    ShotShelf.TextNoteWindow.ShowNote(
+                        text, item, _store, new System.Windows.Point(px.X, px.Y));
+                    UpdateStatus("已生成文字便签（可直接编辑，改动回写暂存架）");
+                }
+                else
+                {
+                    var img = _store.GetFullImage(item);
+                    if (img == null)
+                    {
+                        UpdateStatus("图片缓存丢失，无法生成贴图便签");
+                        return;
+                    }
+                    MiniPix.Pin.PinWindow.Show(
+                        img, new System.Windows.Point(px.X + 10, px.Y + 10), addToShelf: false);
+                    UpdateStatus("已贴成图片便签");
+                }
+            }
+            catch (Exception ex)
+            {
+                MiniPix.Core.Log.Write($"shelf: drag-out sticky failed: {ex.Message}");
+                UpdateStatus("生成便签失败，详见日志");
+            }
+        }
+
+        /// <summary>拖动经过列表：更新幽灵位置 + 计算插入指示线。
+        /// 2026-11-15：悬停在固定堆（任一固定卡）上时改为"固定"语义——不显示插入线，
+        /// 状态栏提示"松手 = 固定到固定堆"。</summary>
         private void OnListDragOver(object sender, System.Windows.DragEventArgs e)
         {
             if (sender is not ListBox list) return;
@@ -2315,8 +2499,22 @@ namespace ShotShelf
             // 幽灵跟着鼠标走（组合 Adorner：坐标换算到 RootGrid，与装饰层同原点）
             _dragFeedback?.MoveGhost(e.GetPosition(RootGrid));
 
-            // 实时提示"松手会插到哪儿"
-            UpdateInsertHint(list, e.GetPosition(list), dragged);
+            var pos = e.GetPosition(list);
+            var container = FindContainerAt(list, pos);
+            bool overPile = !dragged.Pinned &&
+                            container?.Content is ShotItem t && t.Pinned;
+
+            if (overPile)
+            {
+                // 悬停在固定堆上：松手=固定，不显示插入位置
+                SetInsertHint(null, false);
+                UpdateStatus("松手 = 固定到固定堆");
+            }
+            else
+            {
+                // 实时提示"松手会插到哪儿"
+                UpdateInsertHint(list, pos, dragged);
+            }
 
             e.Handled = true;
         }
@@ -2394,8 +2592,25 @@ namespace ShotShelf
             if (container?.Content is not ShotItem target) return;
             if (ReferenceEquals(target, dragged)) return;
 
+            // ---- 2026-11-15 新功能：未固定卡拖到固定堆（任一固定卡）上松手 = 固定 ----
+            // 固定组按 PinnedAt 排序，新固定的自然成为堆顶卡
+            if (target.Pinned)
+            {
+                if (dragged.Pinned)
+                {
+                    UpdateStatus("固定项的位置不参与拖动排序");
+                    return;
+                }
+                dragged.Pinned = true;
+                _store.OnPinChanged();
+                _dropHandled = true;
+                SelectItem(dragged);
+                UpdateStatus("已固定到固定堆");
+                return;
+            }
+
             // 固定项不参与拖动换位（保持它们位置稳定）
-            if (dragged.Pinned || target.Pinned)
+            if (dragged.Pinned)
             {
                 UpdateStatus("固定项的位置不参与拖动排序");
                 return;
@@ -2421,6 +2636,7 @@ namespace ShotShelf
             if (insertAt >= all.Count) insertAt = all.Count - 1;
 
             all.Move(oldIdx, insertAt); // ObservableCollection.Move → 界面自动刷新
+            _dropHandled = true;        // 2026-11-15: 窗口内已处理，松手后不再生成便签
             SelectItem(dragged);
             PlayLandAnimation(list, dragged);  // 落位回弹，明确"已经放到这里了"
             UpdateStatus($"已移动到第 {insertAt + 1} 位");
