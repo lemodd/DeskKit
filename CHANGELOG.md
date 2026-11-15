@@ -5,6 +5,8 @@
 
 ## [未发布]
 
+## [0.2.319] - 2026-11-15
+
 ### 新增
 
 - **拖出暂存架 = 变便签**：把图片/文字卡片直接拖到桌面（或任意架外位置）松手——
@@ -84,5 +86,6 @@
 
 - 长截图误裁内容；选区缩放八向手柄错位；剪贴板被占用卡死截图窗
 
-[未发布]: https://github.com/lemodd/DeskKit/compare/v0.2.317...HEAD
+[未发布]: https://github.com/lemodd/DeskKit/compare/v0.2.319...HEAD
+[0.2.319]: https://github.com/lemodd/DeskKit/releases/tag/v0.2.319
 [0.2.317]: https://github.com/lemodd/DeskKit/releases/tag/v0.2.317
