@@ -75,6 +75,9 @@ namespace ShotShelf
         /// <summary>缩略图（列表显示用）</summary>
         public BitmapSource? Thumbnail { get; set; }
 
+        /// <summary>图像指纹缓存（24x24 像素 SHA256，2026-11-15 全架去重用；文本条目为 null，首次比对时惰性计算）</summary>
+        public string? CachedSig;
+
         /// <summary>捕获时间</summary>
         public DateTime CapturedAt { get; set; } = DateTime.Now;
 

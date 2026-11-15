@@ -392,8 +392,41 @@ namespace ShotShelf
         }
 
         /// <summary>外部模块（贴图 Pin）直接入库一张图（2026-10-30 用户要求：钉住的图也进暂存架）。
-        /// 与剪贴板路径共用 OnClipboardImage（含指纹去重 + 自动保存），避免重复卡片。</summary>
-        public void AddExternalImage(BitmapSource bmp) => OnClipboardImage(bmp);
+        /// 与剪贴板路径共用 OnClipboardImage（含指纹去重 + 自动保存），避免重复卡片。
+        /// 2026-11-15 二修：入库前先与暂存架全部现有图片比对指纹（不限时间窗口）——
+        /// 同图已在架上（含固定堆）就不再收第二张。修"卡片点复制 → Ctrl+Alt+V 贴图成功
+        /// 但暂存架多出一张重复卡"：复制按钮的防回环抑制只在复制瞬间生效，几秒后按
+        /// Ctrl+Alt+V 时抑制已解除，原来的 2 秒指纹窗口也早过了，于是重复入库。</summary>
+        public void AddExternalImage(BitmapSource bmp)
+        {
+            ShotStore.FreezeIfPossible(bmp);
+            string sig = ImageSignature(bmp);
+            foreach (var it in _store.Shots)
+            {
+                if (it.IsText) continue;
+                it.CachedSig ??= ComputeItemSig(it); // 惰性计算一次后缓存
+                if (it.CachedSig.Length > 0 && it.CachedSig == sig)
+                {
+                    ActivateTab(images: true);
+                    SelectItem(it); // 选中已有的那张，用户一眼看到图没丢
+                    UpdateStatus($"同图已在暂存架（第 {it.Index} 张），不重复收入");
+                    MiniPix.Core.Log.Write($"shelf dedupe: pin image matches existing #{it.Index}, skipped");
+                    return;
+                }
+            }
+            OnClipboardImage(bmp);
+        }
+
+        /// <summary>算一个现有条目的图像指纹（全图解码后取 24x24 指纹；失败返回空串）</summary>
+        private string ComputeItemSig(ShotItem it)
+        {
+            try
+            {
+                var full = _store.GetFullImage(it);
+                return full != null ? ImageSignature(full) : "";
+            }
+            catch { return ""; }
+        }
 
         /// <summary>剪贴板来了新图 → 入库（S3）→ 自动保存（2026-10-26）</summary>
         private void OnClipboardImage(BitmapSource bmp)
@@ -415,6 +448,7 @@ namespace ShotShelf
             _lastImageSigTime = DateTime.UtcNow;
 
             var item = _store.Add(bmp);
+            item.CachedSig = sig; // 2026-11-15：指纹随手缓存，全架去重不用再解码
             TryAutoSave(item); // 自动保存（未设置目录时内部直接跳过）
             UpdateStatus($"已捕获第 {item.Index} 张图");
             ActivateTab(images: true); // 2026-11-02 升级阶段2：新图入库自动跳到"图"标签
