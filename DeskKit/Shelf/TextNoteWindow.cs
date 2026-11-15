@@ -109,15 +109,71 @@ namespace ShotShelf
             grid.Children.Add(_box);
             body.Child = grid;
 
-            // 右键菜单：复制全部 / 置顶开关 / 关闭
+            // 右键菜单：复制全部 / 便签设置（颜色/字号/不透明度）/ 置顶开关 / 关闭
+            // 2026-11-15：设置项只作用于当前这张便签（便签不持久化，与贴图策略一致）
             var menu = new ContextMenu();
             var miCopy = new MenuItem { Header = "复制全部" };
             miCopy.Click += (_, _) => { try { Clipboard.SetText(_box.Text); } catch { } };
+            menu.Items.Add(miCopy);
+
+            // ---- 便签颜色…：系统取色器，边框自动取深 18%，深色时文字自动转白 ----
+            var miColor = new MenuItem { Header = "便签颜色…" };
+            miColor.Click += (_, _) =>
+            {
+                var cur = ((SolidColorBrush)body.Background).Color;
+                using var dlg = new System.Windows.Forms.ColorDialog
+                {
+                    FullOpen = true,
+                    Color = System.Drawing.Color.FromArgb(255, cur.R, cur.G, cur.B),
+                };
+                if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                var c = Color.FromRgb(dlg.Color.R, dlg.Color.G, dlg.Color.B);
+
+                static byte Darken(byte v) => (byte)Math.Max(0, v - (int)(v * 0.18));
+                body.Background = new SolidColorBrush(c);
+                body.BorderBrush = new SolidColorBrush(Color.FromRgb(Darken(c.R), Darken(c.G), Darken(c.B)));
+
+                // 深色底自动切浅色文字（含 ✕ 按钮），浅色底恢复默认墨色
+                double lum = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+                var fg = lum < 0.5 ? Colors.White : Color.FromRgb(0x4A, 0x40, 0x20);
+                _box.Foreground = new SolidColorBrush(fg);
+                close.Foreground = new SolidColorBrush(lum < 0.5 ? Color.FromRgb(0xF0, 0xF0, 0xF0) : Color.FromRgb(0x8A, 0x7A, 0x30));
+            };
+            menu.Items.Add(miColor);
+
+            // ---- 文字字号：预设档位，单选 ----
+            var miFont = new MenuItem { Header = "文字字号" };
+            foreach (var s in new double[] { 12, 13, 14, 16, 18, 20 })
+            {
+                var mi = new MenuItem { Header = $"{s} px", IsCheckable = true, IsChecked = Math.Abs(_box.FontSize - s) < 0.1 };
+                mi.Click += (_, _) =>
+                {
+                    _box.FontSize = s;
+                    foreach (var o in miFont.Items) if (o is MenuItem other) other.IsChecked = ReferenceEquals(other, mi);
+                };
+                miFont.Items.Add(mi);
+            }
+            menu.Items.Add(miFont);
+
+            // ---- 不透明度：整窗透明（含文字），预设档位，单选 ----
+            var miOpacity = new MenuItem { Header = "不透明度" };
+            foreach (var pct in new int[] { 100, 90, 80, 70, 60 })
+            {
+                var mi = new MenuItem { Header = $"{pct}%", IsCheckable = true, IsChecked = pct == 100 };
+                mi.Click += (_, _) =>
+                {
+                    Opacity = pct / 100.0;
+                    foreach (var o in miOpacity.Items) if (o is MenuItem other) other.IsChecked = ReferenceEquals(other, mi);
+                };
+                miOpacity.Items.Add(mi);
+            }
+            menu.Items.Add(miOpacity);
+
+            menu.Items.Add(new Separator());
             var miTop = new MenuItem { Header = "取消置顶", IsCheckable = true, IsChecked = true };
             miTop.Click += (_, _) => Topmost = miTop.IsChecked;
             var miClose = new MenuItem { Header = "关闭便签" };
             miClose.Click += (_, _) => Close();
-            menu.Items.Add(miCopy);
             menu.Items.Add(miTop);
             menu.Items.Add(miClose);
             ContextMenu = menu;
