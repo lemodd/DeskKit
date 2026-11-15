@@ -852,11 +852,14 @@ public partial class PinWindow : Window
                 break;
             case AnnTool.Mosaic:
                 // 拖动中只画虚线框，松手时把框内区域马赛克化（同截图逻辑）
+                // 2026-11-15 用户反馈"马赛克不显示边框"：此处仍是旧 #AAEEEEEE 1px 浅虚线，
+                // 浅色图片上完全看不见 → 与截图/预览注释统一为当前颜色 1.5px 虚线 + 22 透明白填充
                 _mosaicTmp = new System.Windows.Shapes.Rectangle
                 {
-                    Stroke = new SolidColorBrush(Color.FromArgb(0xAA, 0xEE, 0xEE, 0xEE)),
-                    StrokeThickness = 1,
-                    StrokeDashArray = new DoubleCollection(new[] { 3.0, 2.0 })
+                    Stroke = AnnBrush,
+                    StrokeThickness = 1.5,
+                    StrokeDashArray = new DoubleCollection(new[] { 4.0, 2.5 }),
+                    Fill = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF))
                 };
                 _annDrawing = _mosaicTmp;
                 break;
