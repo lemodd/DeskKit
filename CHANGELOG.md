@@ -7,6 +7,12 @@
 
 ### 修复
 
+- **拖拽幽灵卡片完全不显示（含架内排序）**：`DragFeedbackAdorner` 构造函数先设置
+  `IsHitTestVisible` 后创建 `VisualCollection`，属性变更触发 WPF 枚举视觉子级时
+  `VisualChildrenCount` 读到 null → NullReferenceException 被静默吞掉，幽灵自某次
+  运行时环境变化后彻底失效；已把 `VisualCollection` 创建提前到构造函数最前
+  （三个 Adorner 同修），并修复插入线未显示过时 `Height=NaN` 导致 Arrange 抛异常的
+  连带 bug
 - **拖出暂存架时架外幽灵卡片不显示**：OLE 拖拽是模态消息循环，循环中途 `Show()` 新窗口不可靠；
   改为拖拽开始前就把幽灵窗预显示在屏幕外、架外只移动位置（不再 Show/Hide），
   并把幽灵改为**以光标为中心**跟随（与架内幽灵一致，不再挂在光标右下角）

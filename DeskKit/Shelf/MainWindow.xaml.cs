@@ -2247,12 +2247,18 @@ namespace ShotShelf
         {
             try
             {
+                MiniPix.Core.Log.Write($"shelf: drag ghost start isText={item.IsText}");
+
                 // 2026-11-02 二次修复：幽灵+蓝线合并为同一个 Adorner（adorn RootGrid）。
                 // 原方案幽灵（adorn ListBox）与蓝线（adorn RootGrid）分开，AdornerLayer 渲染顺序
                 // 跟随被 adorn 元素的树层级 → 蓝线永远在幽灵下面被盖住。合并后同一
                 // VisualCollection 内按添加顺序渲染，蓝线必在幽灵上方。
                 _adornerLayer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(RootGrid);
-                if (_adornerLayer == null) return;
+                if (_adornerLayer == null)
+                {
+                    MiniPix.Core.Log.Write("shelf: drag ghost ABORT - adorner layer null");
+                    return;
+                }
 
                 // 图片项拎缩略图，文字项拎一段文字预览（十三次更新）
                 var src = item.Thumbnail as System.Windows.Media.ImageSource;
@@ -2276,9 +2282,10 @@ namespace ShotShelf
                     container.Opacity = 0.35;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 视觉反馈是锦上添花，任何异常都不能影响排序本身
+                // 视觉反馈是锦上添花，任何异常都不能影响排序本身（但记下来便于排查）
+                MiniPix.Core.Log.Write("shelf: drag ghost failed: " + ex);
             }
         }
 

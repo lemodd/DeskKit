@@ -63,6 +63,7 @@ namespace ShotShelf
 
         public InsertCaretAdorner(UIElement adornedElement) : base(adornedElement)
         {
+            _children = new VisualCollection(this); // 必须最先创建（同 DragFeedbackAdorner 修复）
             IsHitTestVisible = false; // 不吃鼠标事件，绝不能干扰拖拽
             ClipToBounds = false;     // 允许画到 adorned element 之外（卡片 hover 放大越界时也能盖住）
 
@@ -151,6 +152,11 @@ namespace ShotShelf
         public DragFeedbackAdorner(UIElement adornedElement, ImageSource? source, string? text = null)
             : base(adornedElement)
         {
+            // 2026-11-15 修复：VisualCollection 必须最先创建——下面设置 IsHitTestVisible 时
+            // WPF 会枚举视觉子级（VisualChildrenCount），_children 还是 null 就 NRE，
+            // 整个幽灵（架内+架外）从 11 月中旬起静默失效
+            _children = new VisualCollection(this);
+
             IsHitTestVisible = false; // 不吃鼠标事件，绝不能干扰拖拽
             ClipToBounds = false;     // 允许画到 adorned element 之外
 
@@ -216,7 +222,6 @@ namespace ShotShelf
                 RenderTransform = _caretPos,
             };
 
-            _children = new VisualCollection(this);
             _children.Add(_ghost);
             _children.Add(_caret); // 顺序即渲染顺序：蓝线在上
         }
@@ -264,7 +269,10 @@ namespace ShotShelf
         protected override Size ArrangeOverride(Size finalSize)
         {
             _ghost.Arrange(new Rect(0, 0, GhostWidth, GhostHeight));
-            _caret.Arrange(new Rect(0, 0, CaretWidth, Math.Max(4, _caret.Height)));
+            // 2026-11-15 修复：插入线从未显示过时 Height 是 NaN（Math.Max(4,NaN)=NaN），
+            // Arrange 传 NaN 会抛 InvalidOperationException——未显示过时按默认 24 排
+            var caretH = double.IsNaN(_caret.Height) ? 24 : Math.Max(4, _caret.Height);
+            _caret.Arrange(new Rect(0, 0, CaretWidth, caretH));
             return finalSize;
         }
     }
@@ -296,6 +304,7 @@ namespace ShotShelf
         public DragGhostAdorner(UIElement adornedElement, ImageSource? source, string? text = null)
             : base(adornedElement)
         {
+            _children = new VisualCollection(this); // 必须最先创建（同 DragFeedbackAdorner 修复）
             IsHitTestVisible = false;  // 幽灵绝不能吃到鼠标事件，否则拖拽会断
             ClipToBounds = false;      // 允许画到 adorned element 之外
 
@@ -340,7 +349,6 @@ namespace ShotShelf
                 };
             }
 
-            _children = new VisualCollection(this);
             _children.Add(_ghost);
 
             // 整块幽灵的位移统一挂在这里，MoveTo 只改 X/Y
