@@ -142,8 +142,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="Bd" Background="Transparent"
-                                CornerRadius="6" Padding="8,7" Margin="0,1">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent"
+                                    CornerRadius="6" Padding="8,7" Margin="0,1">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="27"/>  <!-- 图标/勾选列（含右侧间距） -->
@@ -164,8 +165,33 @@
                                            Foreground="{StaticResource UiAccent}"
                                            VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,4,0"
                                            Visibility="Collapsed"/>
+                                <!-- 子菜单箭头：有子项时显示 -->
+                                <TextBlock x:Name="Arrow" Grid.Column="2" Text="›" FontSize="15" FontWeight="Bold"
+                                           Foreground="{StaticResource UiTextMuted}"
+                                           VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,2,0"
+                                           Visibility="Collapsed"/>
                             </Grid>
                         </Border>
+                        <!-- 2026-11-15 修复：原模板缺子菜单弹层（PART_Popup），带子项的菜单永远展不开 -->
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
+                               IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               Placement="Right" HorizontalOffset="-8" VerticalOffset="-8">
+                            <Grid Margin="14">
+                                <Border Background="#FFFFFF"
+                                        BorderBrush="{StaticResource UiHairline}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="6">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="18" ShadowDepth="2" Direction="290"
+                                                          Opacity="0.22" Color="#22303C"/>
+                                    </Border.Effect>
+                                    <ItemsPresenter SnapsToDevicePixels="True"/>
+                                </Border>
+                            </Grid>
+                        </Popup>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <!-- 勾选态只在右侧显示对勾，左侧图标不被替换 -->
                             <Trigger Property="IsChecked" Value="True">
@@ -176,6 +202,14 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                            <!-- 有子项：右侧显示 ›；顶级条目子菜单向下弹，次级条目向右弹 -->
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="Role" Value="TopLevelHeader">
+                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
