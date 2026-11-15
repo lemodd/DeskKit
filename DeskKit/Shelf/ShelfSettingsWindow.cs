@@ -894,15 +894,64 @@ namespace ShotShelf
             return chk;
         }
 
-        private static TabItem NewTab(string header, UIElement content) => new()
+        /// <summary>
+        /// 2026-11-15 四轮：现代化滚动条——隐藏原生滚动条，自绘 5px 圆角悬浮窄条贴右缘；
+        /// 滚动时淡入，停手 800ms 后淡出（仿 macOS overlay），不占布局宽度。
+        /// </summary>
+        private static TabItem NewTab(string header, UIElement content)
         {
-            Header = header,
-            Content = new ScrollViewer
+            var sv = new ScrollViewer
             {
-                Content = content,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            },
-        };
+                VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,   // 隐藏原生滚动条
+                Background = Brushes.Transparent,
+            };
+            sv.Content = content;
+
+            var bar = new Border
+            {
+                Width = 5,
+                CornerRadius = new CornerRadius(2.5),
+                Background = new SolidColorBrush(Color.FromArgb(0x50, 0x55, 0x5B, 0x64)),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Height = 0,
+                Opacity = 0,
+                IsHitTestVisible = false,
+            };
+            var host = new Grid();
+            host.Children.Add(sv);
+            host.Children.Add(bar);
+
+            // 停手 800ms 后淡出
+            var fade = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+            fade.Tick += (_, _) =>
+            {
+                fade.Stop();
+                bar.BeginAnimation(OpacityProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(250)));
+            };
+            sv.ScrollChanged += (_, _) =>
+            {
+                if (sv.ScrollableHeight <= 0)
+                {
+                    bar.BeginAnimation(OpacityProperty, null);
+                    bar.Opacity = 0;
+                    return;
+                }
+                double track = host.ActualHeight - 8;
+                if (track < 40) return;
+                double ratio = sv.ViewportHeight / (sv.ViewportHeight + sv.ScrollableHeight);
+                bar.Height = Math.Max(30, track * ratio);
+                double y = 4 + (track - bar.Height) * (sv.VerticalOffset / sv.ScrollableHeight);
+                bar.Margin = new Thickness(0, y, 2, 0);
+                bar.BeginAnimation(OpacityProperty, null);
+                bar.Opacity = 0.9;
+                fade.Stop();
+                fade.Start();
+            };
+
+            return new TabItem { Header = header, Content = host };
+        }
 
         private static TextBlock Note(string text) => new()
         {
