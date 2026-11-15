@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -11,18 +12,20 @@ namespace ShotShelf
     /// 暂存架设置窗口（2026-11-10 反馈二轮：不能只有贴边参数，加外观/暂存/传输页）。
     /// 纯代码建窗（TabControl 七页），非模态、单例：ShowOrActivate。
     /// 页1 外观：颜色 / 卡片显示；页2 贴边；页3 暂存：目录 / 容量与缓存；
-    /// 页4 长截图；页5 贴图：边框 / 阴影；页6 快捷键；页7 传输。
+    /// 页4 长截图；页5 贴图：边框 / 阴影；页6 快捷键；页7 传输（内嵌本机服务+连接其它电脑）。
     /// 2026-11-15：无保存按钮——任何改动 500ms 防抖后自动保存并实时生效
     /// （快捷键页自带按下即生效+失败回滚；全部存 config.json）。
     /// 2026-11-15 三轮：分组卡片式布局（仿 Fluent 设置）——窗口 520×600，
     /// 每页若干「小标题 + 圆角白卡片」，卡片内一行一项：左标签右控件，同类项归组。
+    /// 2026-11-15 四轮：传输设置不再弹独立窗口，原 TransferSettingsWindow 内容
+    /// （设备名/服务网址/端口/接收目录/连接其它电脑）全部内嵌「传输」页。
     /// </summary>
     public sealed class ShelfSettingsWindow : Window
     {
         private static ShelfSettingsWindow? _wnd; // 单例
 
         private readonly Action _onApplied;          // 保存后回调（MainWindow 应用）
-        private readonly Action _openTransferSettings; // 打开传输设置（复用既有窗口）
+        private readonly Action<string?> _onRenamed; // 传输页改设备名后回调（MainWindow 刷新本机卡）
 
         private readonly TextBlock _txtMsg;
 
@@ -55,11 +58,18 @@ namespace ShotShelf
         private Slider _sCascadePeek, _sTextFont;
         private Slider _sPinBorder, _sPinShadowBlur, _sPinShadowDepth, _sPinShadowOpacity;
         private CheckBox _chkPinShadow;
+        // 2026-11-15 传输设置内嵌进「传输」标签页（不再弹独立窗口）
+        private TextBox _txtDevName = null!;
+        private TextBlock _txtLanUrl = null!, _txtClientStatus = null!, _txtReceiveDir = null!;
+        private TextBox _txtServerUrl = null!;
+        private Button _btnConnect = null!, _btnDisconnect = null!, _btnForget = null!;
+        private StackPanel _clientCtlRow = null!;
+        private Action? _clientStateHandler;
 
-        private ShelfSettingsWindow(Window owner, Action onApplied, Action openTransferSettings)
+        private ShelfSettingsWindow(Window owner, Action onApplied, Action<string?> onRenamed)
         {
             _onApplied = onApplied;
-            _openTransferSettings = openTransferSettings;
+            _onRenamed = onRenamed;
             // 2026-11-15 用户要求：设置不再有"保存"按钮——任何改动自动保存、自动生效。
             // 500ms 防抖：拖滑块/改颜色时值连续变化，停手后统一落盘一次。
             _autoSaveTimer = new System.Windows.Threading.DispatcherTimer
@@ -154,6 +164,8 @@ namespace ShotShelf
             {
                 _wnd = null;
                 _autoSaveTimer.Stop();     // 关窗后不再自动保存
+                if (_clientStateHandler != null)
+                    global::DeskKit.Transfer.LanClient.ClientChanged -= _clientStateHandler; // 传输页退订
             };
         }
 
@@ -526,17 +538,190 @@ namespace ShotShelf
             ApplyHotkeysToApp();
         }
 
-        // ================= 页7 传输 =================
+        // ================= 页7 传输（2026-11-15 内嵌：不再弹独立窗口） =================
 
         private TabItem BuildTransferTab()
         {
             var p = NewPage();
-            var c = Card(p, "网络传输");
-            c.Children.Add(Note("手机/电脑浏览器访问本机网址互传文件。\n设备改名、端口、接收目录都在传输设置里。"));
-            var btn = SecondBtn("打开传输设置…", (_, _) => _openTransferSettings(), first: true);
-            btn.Margin = new Thickness(0, 6, 0, 10);
-            c.Children.Add(btn);
+            var svc = global::DeskKit.Transfer.TransferService.Instance!;
+
+            // ---- 卡片：本机服务 ----
+            var cSrv = Card(p, "本机服务");
+            cSrv.Children.Add(Note("手机/电脑浏览器访问下方网址，即可与本机互传文件。"));
+
+            // 设备名称：TextBox + 保存/恢复默认
+            var namePanel = new StackPanel { Orientation = Orientation.Horizontal };
+            _txtDevName = new TextBox
+            {
+                Text = global::DeskKit.Transfer.TransferStore.DeskkitName,
+                Width = 96,
+                Height = 26,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                MaxLength = 60,
+            };
+            namePanel.Children.Add(_txtDevName);
+            namePanel.Children.Add(Btn("保存", (_, _) =>
+            {
+                var name = _txtDevName.Text.Trim();
+                if (name.Length == 0) { _txtMsg.Text = "名称不能为空"; return; }
+                AppConfig.Current.LanDeviceName = name;
+                AppConfig.Current.Save();
+                _onRenamed(name);
+                _txtMsg.Text = "设备名已保存";
+                MiniPix.Core.Log.Write($"lan: device renamed to [{name}]");
+            }));
+            namePanel.Children.Add(Btn("默认", (_, _) =>
+            {
+                AppConfig.Current.LanDeviceName = "";
+                AppConfig.Current.Save();
+                _txtDevName.Text = global::DeskKit.Transfer.TransferStore.DeskkitName; // 读回（=计算机名）
+                _onRenamed(global::DeskKit.Transfer.TransferStore.DeskkitName);
+                _txtMsg.Text = "已恢复计算机名";
+            }));
+            cSrv.Children.Add(Row("设备名称", "显示在其它设备的列表里", namePanel));
+
+            // 服务网址 + 复制（Tailscale 地址可选）
+            var urlPanel = new StackPanel();
+            var urlRow = new StackPanel { Orientation = Orientation.Horizontal };
+            _txtLanUrl = new TextBlock
+            {
+                Text = svc.Url,
+                FontSize = 12.5,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5)),
+            };
+            urlRow.Children.Add(_txtLanUrl);
+            urlRow.Children.Add(Btn("复制", (_, _) =>
+            {
+                try
+                {
+                    Clipboard.SetText(string.Join(Environment.NewLine,
+                        svc.HostIps.Select(ip => $"http://{ip}:{svc.Port}/")));
+                    _txtMsg.Text = "网址已复制";
+                }
+                catch { }
+            }));
+            urlPanel.Children.Add(urlRow);
+            if (svc.TailscaleUrl != null)
+                urlPanel.Children.Add(new TextBlock
+                {
+                    Text = "Tailscale：" + svc.TailscaleUrl,
+                    FontSize = 10.5,
+                    Margin = new Thickness(0, 3, 0, 0),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
+                    ToolTip = "两端都装了 Tailscale 时，任意网络（含手机蜂窝流量）可用此地址",
+                });
+            cSrv.Children.Add(Row("服务网址", "浏览器访问这个地址", urlPanel));
+
+            // 端口说明（只读信息，灰色小字）
+            int lanPort = AppConfig.Current.LanPort;
+            cSrv.Children.Add(Row("端口", lanPort > 0
+                ? $"固定 {lanPort}（被占自动 +1）"
+                : $"自动：当前 {svc.Port}（候选 80 → 8080 → 52123）", new Border()));
+
+            // 接收目录
+            var dirPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            _txtReceiveDir = new TextBlock
+            {
+                Text = global::DeskKit.Transfer.TransferService.ReceiveDir,
+                FontSize = 11,
+                MaxWidth = 120,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = global::DeskKit.Transfer.TransferService.ReceiveDir,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
+            };
+            dirPanel.Children.Add(_txtReceiveDir);
+            dirPanel.Children.Add(Btn("打开", (_, _) =>
+            {
+                try { System.Diagnostics.Process.Start("explorer.exe", global::DeskKit.Transfer.TransferService.ReceiveDir); }
+                catch { }
+            }));
+            cSrv.Children.Add(Row("接收目录", "对方发来的文件存这里", dirPanel));
+
+            // ---- 卡片：连接其它电脑 ----
+            var cConn = Card(p, "连接其它电脑");
+            var connPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            _txtServerUrl = new TextBox
+            {
+                Text = AppConfig.Current.LanClientServerUrl,
+                Width = 100,
+                Height = 26,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "对方 DeskKit「传输设置」显示的服务网址，如 192.168.1.5:80 或 100.x.x.x:80",
+            };
+            connPanel.Children.Add(WithHint(_txtServerUrl, "如 192.168.1.5:80"));
+            _btnConnect = Btn("连接", (_, _) =>
+            {
+                var url = _txtServerUrl.Text.Trim();
+                if (url.Length == 0) { _txtClientStatus.Text = "请填对方的服务网址"; return; }
+                _btnConnect.IsEnabled = false;
+                global::DeskKit.Transfer.LanClient.GetOrCreate().Connect(url);
+            });
+            connPanel.Children.Add(_btnConnect);
+            cConn.Children.Add(Row("服务器网址", "填对方 DeskKit 的服务网址", connPanel));
+
+            _txtClientStatus = new TextBlock
+            {
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0xA9, 0xA0)),
+                Margin = new Thickness(0, 4, 0, 2),
+                MinHeight = 15,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            cConn.Children.Add(_txtClientStatus);
+            _clientCtlRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 6) };
+            _btnDisconnect = Btn("断开", (_, _) => global::DeskKit.Transfer.LanClient.Instance?.Disconnect(forgetServer: false), first: true);
+            _btnForget = Btn("忘记服务器", (_, _) => global::DeskKit.Transfer.LanClient.Instance?.Disconnect(forgetServer: true));
+            _clientCtlRow.Children.Add(_btnDisconnect);
+            _clientCtlRow.Children.Add(_btnForget);
+            cConn.Children.Add(_clientCtlRow);
+            cConn.Children.Add(Note("免配对：填对方网址直连即可，无需配对码。\n同一 WiFi 或两端装 Tailscale（任意网络）均可；首次启动如弹防火墙授权请点\"允许\"。"));
+
+            RefreshTransferClientArea();
+
+            // 连接状态变化实时刷新；关窗时由 Closed 统一退订
+            _clientStateHandler = () => Dispatcher.BeginInvoke(RefreshTransferClientArea);
+            global::DeskKit.Transfer.LanClient.ClientChanged += _clientStateHandler;
+
             return NewTab("传输", p);
+        }
+
+        /// <summary>按客户端连接状态刷新传输页 UI（连接按钮可用性 / 断开·忘记显隐 / 状态文字）。</summary>
+        private void RefreshTransferClientArea()
+        {
+            var client = global::DeskKit.Transfer.LanClient.Instance;
+            var connected = client?.IsConnected == true;
+            _btnConnect.IsEnabled = !connected;
+            _btnDisconnect.Visibility = client == null ? Visibility.Collapsed : Visibility.Visible;
+            _btnForget.Visibility = client != null && !string.IsNullOrEmpty(
+                AppConfig.Current.LanClientServerUrl) ? Visibility.Visible : Visibility.Collapsed;
+            _txtClientStatus.Text = client?.StatusText
+                ?? "未连接 — 填对方服务网址点「连接」即可";
+        }
+
+        /// <summary>TextBox 加灰字水印提示：内容为空时显示 hint，一输入即消失（不挡鼠标）。</summary>
+        private static Grid WithHint(TextBox box, string hint)
+        {
+            var hintTb = new TextBlock
+            {
+                Text = hint,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0xA1, 0xAA)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(5, 0, 0, 1),
+                IsHitTestVisible = false,
+            };
+            void Refresh() => hintTb.Visibility = box.Text.Length == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+            box.TextChanged += (_, _) => Refresh();
+            Refresh();
+            var g = new Grid { Width = box.Width };
+            box.Margin = new Thickness();
+            g.Children.Add(box);
+            g.Children.Add(hintTb);
+            return g;
         }
 
         // ================= 保存 =================
@@ -589,14 +774,14 @@ namespace ShotShelf
         private static string Hex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 
         /// <summary>非模态单例打开；已开着就激活。</summary>
-        public static void ShowOrActivate(Window owner, Action onApplied, Action openTransferSettings)
+        public static void ShowOrActivate(Window owner, Action onApplied, Action<string?> onRenamed)
         {
             if (_wnd != null)
             {
                 _wnd.Activate();
                 return;
             }
-            _wnd = new ShelfSettingsWindow(owner, onApplied, openTransferSettings);
+            _wnd = new ShelfSettingsWindow(owner, onApplied, onRenamed);
             _wnd.Show();
         }
 
@@ -738,6 +923,27 @@ namespace ShotShelf
                 Margin = new Thickness(first ? 0 : 8, 0, 0, 0),
                 Padding = new Thickness(10, 4, 10, 4),
                 FontSize = 11.5,
+                Background = Brushes.White,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),
+                BorderThickness = new Thickness(1),
+            };
+            b.Click += onClick;
+            return b;
+        }
+
+        /// <summary>行内小按钮（传输页用：保存/复制/打开/连接等，比 SecondBtn 更紧凑）。</summary>
+        private static Button Btn(string text, RoutedEventHandler onClick, bool first = false)
+        {
+            var b = new Button
+            {
+                Content = text,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Focusable = false,
+                Margin = new Thickness(first ? 0 : 6, 0, 0, 0),
+                Padding = new Thickness(9, 3, 9, 3),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
                 Background = Brushes.White,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x44, 0x4A, 0x52)),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0xD9, 0xDC, 0xE1)),

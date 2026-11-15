@@ -1304,10 +1304,14 @@ namespace ShotShelf
         }
 
         /// <summary>右键菜单「📍 窗口置顶」勾选切换（IsCheckable 菜单项，Click 时 IsChecked 已翻转）</summary>
-        /// <summary>右键"设置…"：打开设置对话框（非模态单例），保存后实时生效。</summary>
+        /// <summary>右键"设置…"：打开设置对话框（非模态单例），保存后实时生效。
+        /// 2026-11-15：传输设置已内嵌进设置窗口「传输」页，这里只传"设备改名"回调。</summary>
         private void MenuSettings_Click(object sender, RoutedEventArgs e)
         {
-            ShelfSettingsWindow.ShowOrActivate(this, ApplyShelfParams, OpenTransferSettings);
+            ShelfSettingsWindow.ShowOrActivate(this, ApplyShelfParams, name =>
+            {
+                if (_selfDevice != null && name != null) _selfDevice.Name = name;
+            });
         }
 
         /// <summary>打开传输设置窗口（设备标签本机卡与设置对话框共用）。</summary>
