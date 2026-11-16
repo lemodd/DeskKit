@@ -46,11 +46,8 @@ Windows 10/11 x64 · 需 .NET 8 桌面运行时 · 免费开源（GPL-3.0）
 - **`Ctrl` + 滚轮**：在暂存架内任意位置切换 图 / 文 / 设备 三条轨道
 - **不丢**：磁盘缓存开启后重启不丢；每日零点自动清理过期条目
 
-<p align="center">
-  <a href="images/shelf-tabs.mp4"><b>▶ 录屏演示：贴边吸附滑出 + Ctrl 滚轮切换标签</b></a><br>
-  <sub>mp4 · 1.6 MB · 点击在 GitHub 页面内直接播放</sub>
-</p>
-
+<p align="center"><img src="images/shelf-tabs.gif" width="720" alt="贴边吸附滑出与 Ctrl 滚轮切换标签演示"></p>
+<p align="center"><sub>贴边吸附滑出 + Ctrl 滚轮切换 图 / 文 / 设备 标签（15s）· <a href="images/shelf-tabs.mp4">原始录屏</a></sub></p>
 
 ### 🗒 桌面便签（拖出即用）
 
@@ -63,11 +60,8 @@ Windows 10/11 x64 · 需 .NET 8 桌面运行时 · 免费开源（GPL-3.0）
 
 拖拽全程有跟随光标的悬浮幽灵卡片 + “松手 → 贴成便签”提示，松手位置就是落点。
 
-<p align="center">
-  <a href="images/text-note.mp4"><b>▶ 录屏演示：拖出成便签、就地改文字、右键设颜色 / 字号 / 不透明度</b></a><br>
-  <sub>mp4 · 19 MB · 点击在 GitHub 页面内直接播放</sub>
-</p>
-
+<p align="center"><img src="images/text-note.gif" width="720" alt="拖出便签、编辑文字、右键设置演示"></p>
+<p align="center"><sub>复制文字 → 拖出成便签 → 就地改文字 → 右键设颜色 / 字号 / 不透明度（56s，2× 加速）· <a href="images/text-note.mp4">原始录屏</a></sub></p>
 
 ### 📌 固定堆
 
@@ -87,11 +81,8 @@ Windows 10/11 x64 · 需 .NET 8 桌面运行时 · 免费开源（GPL-3.0）
 - **十字准星**：放大镜中央带 24px 准星（白线+深色描边），亮暗背景都看得清
 - **吸管取色**：工具条内置吸管，实时跟随鼠标显示坐标与色值；按 `C` 复制当前颜色值，`Shift` 切换 `rgb(r,g,b)` / `#RRGGBB` 格式（贴图工具条同样内置）
 
-<p align="center">
-  <a href="images/capture.mp4"><b>▶ 录屏演示：框选截图、窗口吸附识别、标注与马赛克</b></a><br>
-  <sub>mp4 · 11 MB · 点击在 GitHub 页面内直接播放</sub>
-</p>
-
+<p align="center"><img src="images/capture.gif" width="720" alt="框选截图、窗口吸附识别、标注与马赛克演示"></p>
+<p align="center"><sub>框选 → 窗口吸附 → 标注 / 马赛克 → 贴图（38s，2× 加速）· <a href="images/capture.mp4">原始录屏</a></sub></p>
 
 ### 📌 贴图
 
