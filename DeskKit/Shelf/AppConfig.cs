@@ -14,8 +14,12 @@ namespace ShotShelf
         /// <summary>暂存上限（超出自动淘汰最旧的未固定项）</summary>
         public int MaxShots { get; set; } = 50;
 
-        /// <summary>缩略图最长边像素（列表里的卡片大小）</summary>
-        public int ThumbSize { get; set; } = 160;
+        /// <summary>
+        /// 缩略图最长边像素（列表里的卡片大小）。
+        /// 2026-11-26：默认 160 → 280。卡片 115×111 DIP、图片铺满裁切，16:9 图在 160 时只有 90px 高，
+        /// 显示时被放大 1.2 倍导致发虚；下限由 ShotStore.MinThumbSize（240）兜底。
+        /// </summary>
+        public int ThumbSize { get; set; } = 280;
 
         /// <summary>是否把图存到磁盘缓存目录（重启后暂存不丢的关键，建议开）</summary>
         public bool EnableDiskCache { get; set; } = true;

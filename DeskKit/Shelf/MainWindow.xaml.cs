@@ -63,6 +63,12 @@ namespace ShotShelf
 
             // ---- S7: 读配置（2026-11-05 改用全局共享实例，App 托盘开关与本窗口共用，防止互相覆盖保存） ----
             _config = AppConfig.Current;
+            // 2026-11-26：老配置里的 160px 缩略图会在卡片上放大 1.2 倍发虚 → 一次性升到清晰档并落盘
+            if (_config.ThumbSize < ShotStore.MinThumbSize)
+            {
+                _config.ThumbSize = 280;
+                try { _config.Save(); } catch { /* 落盘失败不影响本次运行 */ }
+            }
             _store.MaxShots = _config.MaxShots;
             _store.EnableDiskCache = _config.EnableDiskCache;
             _store.SetThumbSize(_config.ThumbSize);

@@ -4,6 +4,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace ShotShelf
@@ -74,6 +76,22 @@ namespace ShotShelf
 
         /// <summary>缩略图（列表显示用）</summary>
         public BitmapSource? Thumbnail { get; set; }
+
+        /// <summary>
+        /// 卡片图片的铺满方式（2026-11-26）：源图够大 → UniformToFill（裁切铺满，锐利）；
+        /// 细长条等小图 → Uniform（居中留白，绝不放大，避免发虚）。
+        /// </summary>
+        private System.Windows.Media.Stretch _thumbStretch = System.Windows.Media.Stretch.UniformToFill;
+        public System.Windows.Media.Stretch ThumbStretch
+        {
+            get => _thumbStretch;
+            set
+            {
+                if (_thumbStretch == value) return;
+                _thumbStretch = value;
+                OnPropertyChanged(nameof(ThumbStretch));
+            }
+        }
 
         /// <summary>图像指纹缓存（24x24 像素 SHA256，2026-11-15 全架去重用；文本条目为 null，首次比对时惰性计算）</summary>
         public string? CachedSig;
@@ -286,13 +304,30 @@ namespace ShotShelf
         /// <summary>是否启用磁盘缓存</summary>
         public bool EnableDiskCache { get; set; } = true;
 
-        /// <summary>缩略图最长边（可由 config 调整）</summary>
-        private int _thumbSize = 160;
+        /// <summary>
+        /// 缩略图最长边（可由 config 调整）。
+        /// 2026-11-26 用户反馈"截图在暂存架都是模糊的"：卡片是 115×111 DIP、缩略图 UniformToFill
+        /// 铺满，16:9 的图在 160px 缩略图下只有 90px 高 → 被放大 1.2~1.3 倍，明显发虚。
+        /// 缩略图必须 ≥ 卡片高度 × 2（超采样）才经得住放大，故下限提到 240、默认 280。
+        /// </summary>
+        private int _thumbSize = 280;
 
-        /// <summary>设置缩略图尺寸（S7 由 config 注入）</summary>
+        /// <summary>缩略图最长边下限（低于此值卡片会放大发虚，见上）</summary>
+        public const int MinThumbSize = 240;
+
+        /// <summary>设置缩略图尺寸（S7 由 config 注入）；已有卡片按新尺寸立即重算</summary>
         public void SetThumbSize(int size)
         {
-            _thumbSize = Math.Clamp(size, 64, 512);
+            int next = Math.Clamp(size, MinThumbSize, 512);
+            if (next == _thumbSize) return;
+            _thumbSize = next;
+            // 源图（全尺寸）都还在内存里，直接重建；延迟解码的条目跳过（GetFullImage 后不影响清晰度要求）
+            foreach (var s in Shots)
+            {
+                if (s.IsText || s.Image == null) continue;
+                s.Thumbnail = MakeThumb(s.Image, _thumbSize, out bool cov);
+                s.ThumbStretch = cov ? Stretch.UniformToFill : Stretch.Uniform;
+            }
         }
 
         /// <summary>磁盘缓存目录（DeskKit 版：改用 DeskKit 目录，不与原 ShotShelf 共用缓存）</summary>
@@ -419,6 +454,10 @@ namespace ShotShelf
         {
             if (!Directory.Exists(CacheDir)) return 0;
 
+            // 2026-11-26：恢复时的缩略图同样受下限保护（老配置里可能还是 160）
+            thumbSize = Math.Clamp(thumbSize, MinThumbSize, 512);
+            _thumbSize = thumbSize;
+
             // 图片与文本一起恢复；去掉扩展名后排序（名字里含时间戳，即时间序）
             var files = Directory.GetFiles(CacheDir)
                 .Where(f =>
@@ -468,7 +507,8 @@ namespace ShotShelf
                         var bmp = LoadPng(path);
                         item.Kind = ShotKind.Image;
                         item.Image = bmp;
-                        item.Thumbnail = MakeThumb(bmp, thumbSize);
+                        item.Thumbnail = MakeThumb(bmp, thumbSize, out bool cov);
+                        item.ThumbStretch = cov ? Stretch.UniformToFill : Stretch.Uniform;
                     }
 
                     // 2026-11-01 倒序排列：文件按时间升序遍历，逐个插到最前 → 恢复完新项在最左
@@ -646,8 +686,9 @@ namespace ShotShelf
                 });
             }
 
-            // ---- 缩略图（最长边可配，默认 160px） ----
-            item.Thumbnail = MakeThumb(bmp, _thumbSize);
+            // ---- 缩略图（2× 卡片的覆盖式裁切；太小的图不放大，卡片改留白显示） ----
+            item.Thumbnail = MakeThumb(bmp, _thumbSize, out bool cover);
+            item.ThumbStretch = cover ? Stretch.UniformToFill : Stretch.Uniform;
 
             // 2026-11-01 用户要求：倒序排列——新项插到最前（界面最左），再把固定项挪回最前
             Shots.Insert(0, item);
@@ -897,13 +938,79 @@ namespace ShotShelf
             return frame;
         }
 
-        /// <summary>生成缩略图（保持宽高比，最长边 = maxEdge）</summary>
-        public static TransformedBitmap MakeThumb(BitmapSource src, int maxEdge)
+        /// <summary>卡片显示尺寸（DIP），必须与 MainWindow.xaml CardTemplate 的 Grid Width/Height 一致</summary>
+        public const double CardW = 115, CardH = 111;
+
+        /// <summary>
+        /// 生成卡片缩略图。
+        /// 2026-11-26 用户反馈"截图在暂存架都是模糊的"——根因是 ImageBrush UniformToFill 铺满卡片时，
+        /// 只要缩略图某个方向比卡片小，就会被**放大**（160px 缩略图 + 16:9 图只有 90px 高 → 放大 1.2 倍；
+        /// 521×100 这类宽条图甚至放大 2 倍），放大必然发虚。
+        /// 现在的做法：
+        /// ① 源图够大（能覆盖 2× 卡片）：先按卡片比例居中裁切，再 Fant 高质量缩到 2× 卡片像素 →
+        ///    显示时是缩小，锐利；
+        /// ② 源图太小（比如细长条截图）：不裁不放大，按原比例输出，卡片改用 Uniform 居中留白（cover=false），
+        ///    这样小图也能看清，而不是被拉糊。
+        /// </summary>
+        public static BitmapSource MakeThumb(BitmapSource src, int maxEdge, out bool cover)
         {
-            double scale = Math.Min(1.0, (double)maxEdge / Math.Max(src.PixelWidth, src.PixelHeight));
-            var thumb = new TransformedBitmap(src, new System.Windows.Media.ScaleTransform(scale, scale));
-            thumb.Freeze(); // 冻结：列表绑定更稳、可跨线程
-            return thumb;
+            double k = Math.Max(1.0, maxEdge / Math.Max(CardW, CardH));   // 超采样倍数（默认 280/115≈2.4）
+            int tw = (int)Math.Round(CardW * k);
+            int th = (int)Math.Round(CardH * k);
+
+            // ---- 按卡片比例算居中裁切区域 ----
+            double cardAspect = CardW / CardH;
+            double srcAspect = (double)src.PixelWidth / src.PixelHeight;
+            int cw, ch;
+            if (srcAspect > cardAspect) { ch = src.PixelHeight; cw = (int)Math.Round(ch * cardAspect); }
+            else { cw = src.PixelWidth; ch = (int)Math.Round(cw / cardAspect); }
+            cw = Math.Max(1, Math.Min(cw, src.PixelWidth));
+            ch = Math.Max(1, Math.Min(ch, src.PixelHeight));
+
+            cover = Math.Max(CardW / (double)cw, CardH / (double)ch) <= 1.2;   // 最多放大 1.2 倍就还看得清
+            try
+            {
+                if (cover)
+                {
+                    // 够大：按卡片比例居中裁切；只有比目标像素大才缩（缩小清晰，绝不放大）
+                    var crop = new CroppedBitmap(src,
+                        new Int32Rect((src.PixelWidth - cw) / 2, (src.PixelHeight - ch) / 2, cw, ch));
+                    double shrink = Math.Max(cw / (double)tw, ch / (double)th);   // >1 才需要缩
+                    if (shrink > 1.0)
+                        return ScaleFant(crop,
+                            Math.Max(1, (int)Math.Round(cw / shrink)),
+                            Math.Max(1, (int)Math.Round(ch / shrink)));
+                    return crop;
+                }
+
+                // 太小 / 太扁：整图保留（不裁切），按 maxEdge 等比缩小，卡片改 Uniform 居中显示
+                double s = Math.Min(1.0, (double)maxEdge / Math.Max(src.PixelWidth, src.PixelHeight));
+                int w = Math.Max(1, (int)Math.Round(src.PixelWidth * s));
+                int h = Math.Max(1, (int)Math.Round(src.PixelHeight * s));
+                return ScaleFant(src, w, h);
+            }
+            catch
+            {
+                // 非 UI 线程等情况下退回简单缩放（质量差一点，但不会崩）
+                double s = Math.Min(1.0, (double)maxEdge / Math.Max(src.PixelWidth, src.PixelHeight));
+                var thumb = new TransformedBitmap(src, new System.Windows.Media.ScaleTransform(s, s));
+                thumb.Freeze(); // 冻结：列表绑定更稳、可跨线程
+                return thumb;
+            }
+        }
+
+        /// <summary>Fant 高质量重采样到目标像素（RenderTargetBitmap 需 UI 线程，调用方保证）</summary>
+        private static BitmapSource ScaleFant(BitmapSource src, int w, int h)
+        {
+            if (w == src.PixelWidth && h == src.PixelHeight) { return src; }
+            var dv = new DrawingVisual();
+            RenderOptions.SetBitmapScalingMode(dv, BitmapScalingMode.HighQuality);
+            using (var dc = dv.RenderOpen())
+                dc.DrawImage(src, new Rect(0, 0, w, h));
+            var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            rtb.Freeze();
+            return rtb;
         }
 
         /// <summary>把任意位图 Freeze 一下，避免 WPF 跨线程访问异常</summary>

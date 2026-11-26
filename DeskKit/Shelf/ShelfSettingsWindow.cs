@@ -134,7 +134,7 @@ namespace ShotShelf
             btnRow.Children.Add(SecondBtn("恢复默认", (_, _) =>
             {
                 _sPeek.Value = 4; _sDetect.Value = 12; _sLeave.Value = 600; _sSnapIn.Value = 600; _sAnim.Value = 600;
-                _sMaxShots.Value = 50; _sThumb.Value = 160; _txtMaxLen.Text = "200000";
+                _sMaxShots.Value = 50; _sThumb.Value = 280; _txtMaxLen.Text = "200000";
                 _chkText.IsChecked = true; _chkDisk.IsChecked = true;
                 foreach (var key in DefColors.Keys) SetColor(key, DefColors[key]);
                 _chkFollow.IsChecked = false;
@@ -302,7 +302,7 @@ namespace ShotShelf
             // ---- 卡片：容量与缓存 ----
             var cCap = Card(p, "容量与缓存");
             _sMaxShots = AddSliderRow(cCap, "暂存上限", "超出自动淘汰最旧未固定项", 10, 500, 10, cfg.MaxShots, "条");
-            _sThumb = AddSliderRow(cCap, "缩略图最长边", "对新入库的图生效", 96, 320, 8, cfg.ThumbSize, "px");
+            _sThumb = AddSliderRow(cCap, "缩略图最长边", "越大越清晰（最小 240，调小会让卡片发虚）", 240, 512, 8, cfg.ThumbSize, "px");
             _chkText = AddCheckRow(cCap, "捕获剪贴板文字", "关掉后只暂存图片（重启生效）", cfg.EnableTextCapture);
             var maxLenRow = Row("单条文字上限", "超出截断（字符）", new TextBox
             {

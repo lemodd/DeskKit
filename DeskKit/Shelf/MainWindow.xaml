@@ -221,12 +221,12 @@
                 <!-- ===== 图片分支：2026-11-14 用户要求恢复"十四次更新"设计——缩略图铺满整张卡片
                      （ImageBrush UniformToFill 裁切铺满，圆角自动裁剪），
                      尺寸/时间信息改为底部半透明黑条浮在图上（白字）。 -->
-                <Border CornerRadius="8" ClipToBounds="True"
+                <Border CornerRadius="8" ClipToBounds="True" Background="#F2F3F5"
                         Visibility="{Binding ImageVisibility}">
                     <Grid>
                         <Border>
                             <Border.Background>
-                                <ImageBrush ImageSource="{Binding Thumbnail}" Stretch="UniformToFill"
+                                <ImageBrush ImageSource="{Binding Thumbnail}" Stretch="{Binding ThumbStretch}"
                                             RenderOptions.BitmapScalingMode="HighQuality"/>
                             </Border.Background>
                         </Border>
